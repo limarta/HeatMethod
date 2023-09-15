@@ -1,5 +1,5 @@
 using DifferentialEquations
-using WGLMakie
+using Plots
 
 N = 20
 dxy = range(-1,1, N)
