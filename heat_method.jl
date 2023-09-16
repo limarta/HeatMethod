@@ -15,19 +15,13 @@ macro bind(def, element)
 end
 
 # ╔═╡ dab8582c-e8e2-443f-b52c-ac716b2ca12e
-using PlutoUI, JSServe
+using PlutoUI
 
 # ╔═╡ 358c1832-06c0-4918-b766-8c1de98c21d3
-using DifferentialEquations, Plots, Colors 
+using DifferentialEquations, Plots
 
 # ╔═╡ efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
 PlutoUI.TableOfContents(depth=5)
-
-# ╔═╡ f0b76df7-2f2e-4250-8841-0e8d0e296dfc
-begin
-	JSServe.SERVER_CONFIGURATION.listen_port[] = 8085
-	server = JSServe.get_server()
-end
 
 # ╔═╡ edce4ccf-7be7-4b0d-98aa-c572eac3d0ad
 md"""
@@ -109,7 +103,7 @@ Shortest path algorithms such as Dijkstra's seem to be the perfect fit for findi
 
 Let us consider again the square surface above where each side is unit length. Clearly the shortest path from $A$ to $B$ is the diagonal with length $\sqrt{2}$. Now how would a shortest path algorithm do here? 
 
-We need a graph to pass to our solver. So what if we simply use the four vertices and four sides of the square. Unfortunately we immediately run into problems - no matter how good the solver is, the optimal path from $A$ to $B$ is purportedly along the sides.
+We need a graph to pass to our solver. So what if we simply use the four vertices and four sides of the square? Unfortunately we immediately run into problems - no matter how good the solver is, the optimal path from $A$ to $B$ is purportedly along the sides.
 
 """
 
@@ -120,47 +114,153 @@ let
 	highlighted_side_x = [0, 1]
 	highlighted_side_y = [1, 1]
 	# Create the plot
-	plot(x, y, lw = 2, linecolor = :black, legend = false, xlims=(0,1), ylims=(0,1), size = (300,300), aspect_ratio=:equal, framestyle=:box, ticks=false, background_color=:white)
+	plot(x, y, lw = 2, linecolor = :black, legend = false, xlims=(0,1), ylims=(0,1), size = (200,200), aspect_ratio=:equal, framestyle=:box, ticks=false, background_color=:white, margin=5*Plots.mm)
 	plot!(highlighted_side_x, highlighted_side_y, seriestype = :shape, lw = 10, linecolor = :red)
+	annotate!(-0.05,-0.05, "A", fontsize=5)
+	annotate!(1.05,1.05, "B", fontsize=5)
 	plot!([0,0], [0,1], lw=10, linecolor=:red)
 end
 
 # ╔═╡ a73d4efc-b9a7-4171-9bdc-c98e907dd2b7
 md"""
-What now? Well often a thematic idea to approximate continuous surfaces is to add more vertices or edges, or in other words *discretizing* the surface. Below is a discretization strategy that divides the square into a lattice. 
+Clearly our choice of the graph does not adequately describe the possible paths of a *continuous* surface, so what now? In many fields such as PDEs, numerical simulations commonly discretize continuous spaces into discrete ones, so we can try to use the same methods here. 
+
+What should the discretization be though? It turns out there is not obvious choice of discretizing the space. The figure below shows one possible strategy that cuts the square into smaller triangles. 
 """
 
 # ╔═╡ 6f2cdb0d-c00d-48ca-a2d0-ea462532895d
 md"""Refine N: $(@bind refinement_n  PlutoUI.Slider(2:2:16,8,true))"""
 
+# ╔═╡ 97460bf6-ce4f-4210-9664-8c6c43a9a382
+let
+	dx = range(0,1,refinement_n+1)
+	plot()
+	xlims!((0,1))
+	ylims!((0,1))
+	plot!(ticks=false,  framestyle=:box, size=(300, 300), legend=false, margin=5*Plots.mm)
+	vline!(dx, line = :black, lw = 1)
+	hline!(dx, line = :black, lw=1)
+
+	xx = repeat(dx, inner=2)[2:end]
+	yy = repeat(dx, inner=2)[1:end-1]
+	plot!(xx,yy, color=:red, lw=3)
+	for x in dx
+		plot!([0,x], [x,0], color=:black)
+	end
+	for x in reverse(dx)
+		plot!([x,1], [1,x], color=:black)
+	end
+	plot!([0,1], [1,0], color=:blue, lw=3)
+	annotate!(-0.05, 1.05, "A", color = :black, fontsize = 5)
+	annotate!(-0.05, -.05, "B", color = :black, fontsize = 5)
+	annotate!(1.05, 1.05, "C", color = :black, fontsize = 5)
+	annotate!(1.05, -0.05, "D", color = :black, fontsize = 5)
+end
+
 # ╔═╡ 0526ff5b-952c-4cba-842b-1059c67c12e1
 md"""
-There is a problem though. Although our discretization choice is quite reasonable and common in other settings, this lattice approximation actually yields **no** improvement. The shortest path will always be the stepwise path of length $2$. 
+Like before, the partitioned square can be represented as a graph and running a shortest path algorithm will produce the two paths shown in red and blue. This strategy successfully recovers the geodesic from $A$ to $D$ because it just so happens that the graph has the edges to describe this path. Despite our initial successes, this choice leads to the path in red. A careful look shows that this path *still* has length $2$ despite refining the graph! Further discretization will yield **no** improvement for the path from $B$ to $C$.
 
-Could we try to resolve the issue by adding more irregular edges to the discretization? Unfortunately, with this simple example no matter how many vertices or edges the approximated graph contains there will always be a pair of points whose connecting geodesic will have a poor approximation. 
+Adding an edge from $B$ to $C$ of length $\sqrt{2}$ can fix the problem for this particular path, but this fails to address the more general case where the start and ending points lie in arbitrary places on the square. Of course, there is always the option to add many irregular edges to the graph to express more paths, but it will never be enough to precisely answer every query. The downsides are that more edges means longer runtimes and possibly larger memory consumption to represent all of the visited points. 
+
+Finally even if we were willing to take the hit in runtime and memory performance, this all assumes that we can compute the weights of the edges. In a square it is straightforward but asking the same question on more complicated surfaces becomes just as difficult as finding the geodesics themselves.  
 """
 
-# ╔═╡ 0ccb9878-f3a3-4bfb-b857-e3837f31678f
-
-
-# ╔═╡ 080a5330-8bb5-4a98-a4b8-e5519ee69ed5
-md"""
-Aside: Moral discretization? Can we even assign one to begin with?
-"""
+# ╔═╡ f0eb3973-f9c4-41fc-8f38-3bcb71e76c7d
+let
+	θ = range(0,2,100)
+	c1 = Shape([(0.9i,0.9j) for (i,j) in zip(cospi.(θ), sinpi.(θ))])
+	c2 = Shape([(0.5*i,0.5*j) for (i,j) in zip(cospi.(θ), sinpi.(θ))])
+	T = 1.0
+	plot(ticks=false,  framestyle=:none, size=(200, 200), legend=false, xlims=(-T,T), ylims=(-T,T))
+	plot!(c1, color=:lightgray)
+	plot!(c2, color=:white)
+	scatter!([0.6], [0.1], markersize=5, markerstrokewidth=0,colormap=:red)
+	scatter!([-0.7], [-0.4], markersize=5, markerstrokewidth=0, colormap=:red)
+	annotate!(0,-1.05,"What is a good discretization?",annotationfontsize=9)
+end
 
 # ╔═╡ 19696716-d7ae-4ffd-8b73-399e5f02831b
 md"""
 # Intuition by Leveraging Heat
 
-How do we use heat to produce a notion of distance? Let's continue with the running example of a metal square surface that is initially $0^{\circ}$F everywhere. Now let us take a red-hot needle and touch the center of the plate. At $t=0$ only the center of the plate is hot - say $300^\circ$ F. After a while, the heat flows away from the concentrated center to the boundaries, and this process is governed according to a diffusion equation. Time elapsed means that more of the plate becomes warmer while the center slowly cools down. 
+How do we use heat to produce a notion of distance? Let's continue with the running example of a metal square surface that is initially $0^{\circ}$F everywhere. Now let us take a red-hot needle and touch the center of the plate. At $t=0$ only the center of the plate is hot - say $100^\circ$ F. After a while, the heat flows away from the concentrated center to the boundaries, and this process is governed according to a diffusion equation. Time elapsed means that more of the plate becomes warmer while the center slowly cools down. 
+"""
+
+# ╔═╡ 0350b1d6-4245-4b86-8b45-be9c00a16c77
+md"""t =  $(@bind t_viz PlutoUI.Slider(0:0.01:10, show_value=true))"""
+
+# ╔═╡ ac43bbab-3014-4ece-b738-157e6367f734
+md"""
+Notably, the amount of heat at a given point on the plate is tied to how long it took for heat to diffuse from the center. Consider a point on the edge of the plate. We see that the temperature is consistently colder than the center, indicating that the point is quite far. Great. We have a notion of distance, but where do the geodesics come into play? By following where the heat flows away (e.g. decreasing temperatures), we can approximate the geodesics by finding paths that monotonically decrease in temperature. This is exactly what is happening when moving away from the center to the edge of the metal plate. 
+
+The next example shows a more complicated setup with *two* source points. In the multisource problem, the distance of the geodesics is the shortest path from any of the source points. The plot on the right shows heat measurements for three different locations. 
+"""
+
+# ╔═╡ 3a23522e-d7d6-4461-bd33-878e1c823ea6
+md"""
+t = $(@bind t_multi PlutoUI.Slider(0:0.001:0.1, show_value=true))
+"""
+
+# ╔═╡ 7564b349-5d51-44a0-b78a-654cd1bbfb61
+md"""
+There are two interesting insights from the bar plot. The first is confirmation of our previous observation - the furthest point from the sources is consistently colder than points closer to them. The second is that the quality of the measurements is time sensitive. For large $t$, the plate has reached pretty close to equilibrium at around ~$0.04$, and so it is tougher to say which points are truly farther or whether it is a fluke with how the heat disperses. However, for $t$ very close to $0$, the difference in measurements is striking and better reflects the range of geodesic lengths. Notice that $t=0$ is largely uninformative.
+
+It seems that to get high quality measurements, we need to operate in a middle ground. On one extreme, we must avoid running the simulation for too long or else the surface will reach an equilibrium. On the other extreme, we need to run the simulation for some small non-zero time to begin diffusion. The next section formalizes this intuition and presents our first algorithm to compute geodesics."""
+
+# ╔═╡ 22ff8df4-2902-4ebc-ab43-6a14f38113c6
+@bind tt PlutoUI.Slider(1:0.05:2)
+
+# ╔═╡ aec2c069-00a1-405f-b3d6-f1db253222fd
+let
+	x = [tt, 1, 2, 0]
+	y = [0, 0, tt, 2]
+	z = [0, tt, 0, 1]
+	i = [0, 0, 0, 1]
+	j = [1, 2, 3, 2]
+	k = [2, 3, 1, 3]
+	
+	mesh3d(x, y, z; connections = (i, j, k), 
+    title = "triangles", xlabel = "x", ylabel = "y", zlabel = "z", 
+    legend = :none, margin = 2 * Plots.mm, alpha = 0.2, ticks=false)
+end
+
+# ╔═╡ 96fdedc9-3adf-4e46-9a50-d0b38bd38caf
+md"""
+### Varadhan's Approximation
+
+The relationship between heat flow and distance is captured by an elegant expression known as Varadhan's formula.
+
+$$\lim\limits_{t\rightarrow 0^+} t \log h(t,x,y) = -4d(x,y)^2$$
+lim
+
+Here $d(x,y)$ is the geodesic distance between points $x$ and $y$.
+
+$h(t,x,y)$ is the heat kernel. Explain het kernel. Now there are some technical conditions that need to hold for pairs of points. I'm not too familiar with the details to comment further, and luckily we won't need to worry about satisfying the assumptions.
+
+This formula gives us a direct way to estimate $d(x,y)$. First we place a unit of heat at at the source $x$ and simulate for some time $t$. Then we measure the temperature at 
+$y$ to find the value of 
+$h(tx,y)$. For small time 
+$t$, we can substitute the values into the formula to obtain 
+$d(x,y)$. I will gloss over for now on how the heat flow implementation on a computer and so for now just assume that we can do so. Let's see what we get:
+
+Figure 1 - First panel is heat diffusion. Second panel is geodesics by apply varadhan's formula
+
+Not a bad approximation. But let's take a closer look at the quality of the results. Figure ? shows the how the values of distance changes with respect to the heat kernel. We see that the quality is low.
+
+Figure 2 - Three graphs showing discretization imprecisions
+
+Why do these artifacts appear? Well it turns out discretization (as we will later discuss how to do) places fundamental limits on the resolution of heat diffusion. Finer discretizations yield more accurate solutions whereas low discretizations produce highly quantized results. Thus a lot of "bucketing" is going on as show in the previous figure.
+"""
+
+# ╔═╡ 54c232ba-1175-40a3-b5a9-729450905e9f
+md"""
+### Eikonal Equation
 """
 
 # ╔═╡ 6c50e998-5265-11ee-26eb-0f88bae8e979
 begin
-	N = 50
-	dxy = range(-1, 1, N)
-	x = dxy
-	y = dxy
+
 	function laplacian(du,u,p,t)
 	    alpha, dx = p
 	    N,_ = size(du)
@@ -180,73 +280,48 @@ begin
 	    u[mid,mid] =300.0
 	    u
 	end
-	
+end
+
+
+# ╔═╡ e7080c15-ac7e-4106-8df4-65a668e39b83
+let
+	N = 50
+	dxy = range(-1, 1, N)
+	x = dxy
+	y = dxy
 	u0 = init_heat_map(dxy)
 	p = (0.01, step(dxy))
 	prob = ODEProblem(laplacian, u0, (0.0, 20.0), p)
 	sol = solve(prob)
 	nothing
-end
-
-# ╔═╡ 97460bf6-ce4f-4210-9664-8c6c43a9a382
-let
-	dx = range(0,1,refinement_n+1)
-	plot()
-	println(x)
-	xlims!((0,1))
-	ylims!((0,1))
-	plot!(ticks=false,  framestyle=:box, size=(300, 300), legend=false)
-	vline!(dx, line = :black, lw = 1)
-	hline!(dx, line = :black, lw=1)
-
-	xx = repeat(dx, inner=2)[2:end]
-	yy = repeat(dx, inner=2)[1:end-1]
-	plot!(xx,yy, color=:red, lw=2)
-	for x in dx
-		plot!([0,x], [x,0], color=:black)
-	end
-	for x in reverse(dx)
-		plot!([x,1], [1,x], color=:black)
-	end
-	plot!([0,1], [1,0], color=:red, lw=2)
-	# 	println(i)
-	# 	plot!([0,refinement_n-i], [i,0], color=:black)
-	# end
-	# plot!()
-	plot!()
-		# scatter!(ax, 0, 0, marker=:circle, markersize=50, color=:red)
-		# scatter!(ax, 1, 1, marker=:circle, markersize=50, color=:red)
-		# xx = repeat(x, inner=2)[2:end]
-		# yy = repeat(y, inner=2)[1:end-1]
-		# lines!(ax, xx,yy, linewidth=10, color=:red)
-		# hidedecorations!(ax)
-		# fig
-end
-
-# ╔═╡ 0350b1d6-4245-4b86-8b45-be9c00a16c77
-md"""t =  $(@bind t_viz PlutoUI.Slider(0:0.01:10, show_value=true))"""
-
-# ╔═╡ e7080c15-ac7e-4106-8df4-65a668e39b83
-let
 	cfunc(x) = (0.0, maximum(x)+sqrt(100/(200-maximum(x)/2)))
-	heatmap(x,y,sol(t_viz), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(-1,1), ylims=(-1,1), background_color_subplot=false, clims=cfunc)
+	p1 = heatmap(x,y,sol(t_viz), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(-1,1), ylims=(-1,1), background_color_subplot=false, clims=cfunc)
 	plot!(size=(400,400))
 end
 
-# ╔═╡ ac43bbab-3014-4ece-b738-157e6367f734
-md"""
-Notably, the amount of heat at a given point on the plate is tied to how long it took for heat to diffuse from the center. Take a point on the edge of the plate. We see that the temperature is consistently much lower than the center, indicating that the point is quite far.
-"""
-
-# ╔═╡ 96fdedc9-3adf-4e46-9a50-d0b38bd38caf
-md"""
-### Varadhan's Approximation
-"""
-
-# ╔═╡ 54c232ba-1175-40a3-b5a9-729450905e9f
-md"""
-### Eikonal Equation
-"""
+# ╔═╡ 0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
+let
+	function initialize_grid(dx,dy)
+	    grid = zeros(length(dx),length(dy))
+	    grid[1, 1] = grid[end,end] = 10.0
+	    grid
+	end
+	N = 21
+	dx = range(-1,1,N)
+	dy = range(-1,1,N)
+	u0_multi = initialize_grid(dx,dy)
+	problem = ODEProblem(laplacian, u0_multi,(0, 10.0), (10, step(dx)))
+	soln = solve(problem)
+	heatmap(dx, dy, soln(t_multi), aspect_ratio=:equal, xlims=(-1,1), ylims=(-1,1))
+	ii = [20, 9, 2]
+	jj = [20, 9, 20]
+	fig1 = scatter!(dx[ii],dy[jj], markersize=5, color=:green, markerstrokewidth=0, legend=false)
+	measurements = [soln(t_multi)[i,j] for (i,j) in zip(ii,jj)]
+	fig2 = plot(bar(["A","B","C"], measurements), ylabel="Heat", margin=5*Plots.mm)
+	layout = @layout([a b{0.2w}])
+    plot(fig1, fig2, layout = layout, legend = false)
+	
+end
 
 # ╔═╡ a9dfc324-03ec-4884-a19e-4371ac069e1b
 md"""
@@ -259,16 +334,12 @@ md"""
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
-Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
-JSServe = "824d6782-a2ef-11e9-3a09-e5662e0c26f9"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 
 [compat]
-Colors = "~0.12.10"
 DifferentialEquations = "~7.9.1"
-JSServe = "~2.2.10"
 Plots = "~1.39.0"
 PlutoUI = "~0.7.52"
 """
@@ -279,7 +350,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.0-beta2"
 manifest_format = "2.0"
-project_hash = "0dfa2d2add2833dcb1bb5ac5720236104428654a"
+project_hash = "0b54549dd9b54f22d0c5673db0880442da495b8d"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f2b16fe1a3491b295105cae080c2a5f77a842718"
@@ -546,12 +617,6 @@ deps = ["Mmap"]
 git-tree-sha1 = "9e2f36d3c96a820c678f2f1f1782582fcf685bae"
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 version = "1.9.1"
-
-[[deps.Deno_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "cd6756e833c377e0ce9cd63fb97689a255f12323"
-uuid = "04572ae6-984a-583e-9378-9577a1c2574d"
-version = "1.33.4+0"
 
 [[deps.DiffEqBase]]
 deps = ["ArrayInterface", "ChainRulesCore", "DataStructures", "DocStringExtensions", "EnumX", "FastBroadcast", "ForwardDiff", "FunctionWrappers", "FunctionWrappersWrappers", "LinearAlgebra", "Logging", "Markdown", "MuladdMacro", "Parameters", "PreallocationTools", "Printf", "RecursiveArrayTools", "Reexport", "Requires", "SciMLBase", "SciMLOperators", "Setfield", "SparseArrays", "Static", "StaticArraysCore", "Statistics", "Tricks", "TruncatedStacktraces", "ZygoteRules"]
@@ -948,12 +1013,6 @@ git-tree-sha1 = "31e996f0a15c7b280ba9f76636b3ff9e2ae58c9a"
 uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 version = "0.21.4"
 
-[[deps.JSServe]]
-deps = ["Base64", "CodecZlib", "Colors", "Dates", "Deno_jll", "HTTP", "Hyperscript", "LinearAlgebra", "Markdown", "MsgPack", "Observables", "RelocatableFolders", "SHA", "Sockets", "Tables", "Test", "ThreadPools", "URIs", "UUIDs", "WidgetsBase"]
-git-tree-sha1 = "38be9964165e8693b63f2d5ba2b6154dfd69c3b1"
-uuid = "824d6782-a2ef-11e9-3a09-e5662e0c26f9"
-version = "2.2.10"
-
 [[deps.JpegTurbo_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "6f2675ef130a300a112286de91973805fcc5ffbc"
@@ -1232,12 +1291,6 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 version = "2023.1.10"
 
-[[deps.MsgPack]]
-deps = ["Serialization"]
-git-tree-sha1 = "fc8c15ca848b902015bd4a745d350f02cf791c2a"
-uuid = "99f44e22-a591-53d1-9472-aa23ef4bd671"
-version = "1.2.0"
-
 [[deps.MuladdMacro]]
 git-tree-sha1 = "cac9cc5499c25554cba55cd3c30543cff5ca4fab"
 uuid = "46d2c3a1-f734-5fdb-9937-b9b9aeba4221"
@@ -1270,11 +1323,6 @@ deps = ["ArrayInterface", "DiffEqBase", "EnumX", "FiniteDiff", "ForwardDiff", "L
 git-tree-sha1 = "ee53089df81a6bdf3c06c17cf674e90931b10a73"
 uuid = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
 version = "1.10.0"
-
-[[deps.Observables]]
-git-tree-sha1 = "6862738f9796b3edc1c09d0890afce4eca9e7e93"
-uuid = "510215fc-4207-5dde-b226-833fc4488ee2"
-version = "0.5.4"
 
 [[deps.OffsetArrays]]
 deps = ["Adapt"]
@@ -1865,12 +1913,6 @@ version = "0.1.1"
 deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
-[[deps.ThreadPools]]
-deps = ["Printf", "RecipesBase", "Statistics"]
-git-tree-sha1 = "50cb5f85d5646bc1422aa0238aa5bfca99ca9ae7"
-uuid = "b189fb0b-2eb5-4ed4-bc0c-d34c51242431"
-version = "2.1.1"
-
 [[deps.ThreadingUtilities]]
 deps = ["ManualMemory"]
 git-tree-sha1 = "eda08f7e9818eb53661b3deb74e3159460dfbc27"
@@ -1977,12 +2019,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "4528479aa01ee1b3b4cd0e6faef0e04cf16466da"
 uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
 version = "1.25.0+0"
-
-[[deps.WidgetsBase]]
-deps = ["Observables"]
-git-tree-sha1 = "30a1d631eb06e8c868c559599f915a62d55c2601"
-uuid = "eead4739-05f7-45a1-878c-cee36b57321c"
-version = "0.1.4"
 
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
@@ -2218,7 +2254,6 @@ version = "1.4.1+0"
 # ╔═╡ Cell order:
 # ╠═dab8582c-e8e2-443f-b52c-ac716b2ca12e
 # ╠═efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
-# ╠═f0b76df7-2f2e-4250-8841-0e8d0e296dfc
 # ╠═358c1832-06c0-4918-b766-8c1de98c21d3
 # ╟─edce4ccf-7be7-4b0d-98aa-c572eac3d0ad
 # ╟─94ca9000-947d-44d2-8a6d-f9177c476345
@@ -2227,20 +2262,24 @@ version = "1.4.1+0"
 # ╟─ba6a8f2e-3e01-48c9-a07a-72fcde78e6f1
 # ╠═008abc67-4a20-4ba7-a7e0-a1922fd67387
 # ╟─8c2aaf03-a48f-4241-9e78-3b7312ee71e2
-# ╠═5a53c282-c0be-47b3-964f-2fedbfa25451
+# ╟─5a53c282-c0be-47b3-964f-2fedbfa25451
 # ╟─a73d4efc-b9a7-4171-9bdc-c98e907dd2b7
 # ╟─6f2cdb0d-c00d-48ca-a2d0-ea462532895d
-# ╠═97460bf6-ce4f-4210-9664-8c6c43a9a382
-# ╠═0526ff5b-952c-4cba-842b-1059c67c12e1
-# ╠═0ccb9878-f3a3-4bfb-b857-e3837f31678f
-# ╠═080a5330-8bb5-4a98-a4b8-e5519ee69ed5
+# ╟─97460bf6-ce4f-4210-9664-8c6c43a9a382
+# ╟─0526ff5b-952c-4cba-842b-1059c67c12e1
+# ╟─f0eb3973-f9c4-41fc-8f38-3bcb71e76c7d
 # ╟─19696716-d7ae-4ffd-8b73-399e5f02831b
-# ╟─6c50e998-5265-11ee-26eb-0f88bae8e979
 # ╟─0350b1d6-4245-4b86-8b45-be9c00a16c77
 # ╠═e7080c15-ac7e-4106-8df4-65a668e39b83
 # ╟─ac43bbab-3014-4ece-b738-157e6367f734
+# ╟─3a23522e-d7d6-4461-bd33-878e1c823ea6
+# ╠═0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
+# ╟─7564b349-5d51-44a0-b78a-654cd1bbfb61
+# ╠═22ff8df4-2902-4ebc-ab43-6a14f38113c6
+# ╠═aec2c069-00a1-405f-b3d6-f1db253222fd
 # ╠═96fdedc9-3adf-4e46-9a50-d0b38bd38caf
 # ╠═54c232ba-1175-40a3-b5a9-729450905e9f
+# ╠═6c50e998-5265-11ee-26eb-0f88bae8e979
 # ╠═a9dfc324-03ec-4884-a19e-4371ac069e1b
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
