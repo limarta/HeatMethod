@@ -194,24 +194,19 @@ md"""t =  $(@bind t_viz PlutoUI.Slider(range(0,1,101), show_value=true))"""
 md"""
 Notably, the amount of heat at a given point on the plate is tied to how long it took for heat to diffuse from the center. Consider a point on the edge of the plate. We see that the temperature is consistently colder than the center, indicating that the point is quite far. Great. We have a notion of distance, but where do the geodesics come into play? By following where the heat flows away (e.g. decreasing temperatures), we can approximate the geodesics by finding paths that monotonically decrease in temperature. This is exactly what is happening when moving away from the center to the edge of the metal plate. 
 
-The next example shows a more complicated setup with *two* source points. In the multisource problem, the distance of the geodesics is the shortest path from any of the source points. The plot on the right shows heat measurements for three different locations. 
+The next example shows a more complicated setup with *two* source points. In the multisource problem, the distance of the geodesics is the shortest path from any of the source points. The plot on the right shows heat measurements for three different locations. Can you map each dot to the correct bar?
 """
 
 # ╔═╡ 3a23522e-d7d6-4461-bd33-878e1c823ea6
 md"""
-t = $(@bind t_multi PlutoUI.Slider(0:0.001:0.1, show_value=true))
+t = $(@bind t_multi PlutoUI.Slider(0:0.001:0.1, show_value=true, default=0.02))
 """
 
 # ╔═╡ 7564b349-5d51-44a0-b78a-654cd1bbfb61
 md"""
-There are two interesting insights from the bar plot. The first is confirmation of our previous observation - the furthest point from the sources is consistently colder than points closer to them. The second is that the quality of the measurements is time sensitive. For large $t$, the plate has reached pretty close to equilibrium at around ~$0.04$, and so it is tougher to say which points are truly farther or whether it is a fluke with how the heat disperses. However, for $t$ very close to $0$, the difference in measurements is striking and better reflects the range of geodesic lengths. Notice that $t=0$ is largely uninformative.
+There are two interesting insights from the bar plot. The first is confirmation of our previous observation - the furthest point from the sources is consistently colder than points closer to them. The second is that the quality of the measurements is time sensitive. For large $t$, the plate has reached pretty close to equilibrium at around ~$0.04$, and so it is tougher to say which points are truly farther or whether it is a fluke with how the heat disperses. However, for $t$ very close to $0$, the difference in measurements is striking and better reflects the range of geodesic lengths. Notice that $t=0$ is uninformative, forcing us to use $t>0$.
 
 It seems that to get high quality measurements, we need to operate in a middle ground. On one extreme, we must avoid running the simulation for too long or else the surface will reach an equilibrium. On the other extreme, we need to run the simulation for some small non-zero time to begin diffusion. The next section formalizes this intuition and presents our first algorithm to compute geodesics."""
-
-# ╔═╡ 09631a50-c2fc-4874-aa10-937bc9f5a092
-md"""
-[^2]: We will address how to simulate heat in a later section.
-"""
 
 # ╔═╡ 96fdedc9-3adf-4e46-9a50-d0b38bd38caf
 md"""
@@ -234,7 +229,7 @@ varadhan_formula(t, heat) = sqrt.(-4t * log.(heat))
 
 # ╔═╡ 2dad5bf2-ac9c-4767-ac37-3abd252f338a
 md"""
-Below we have defined $\texttt{heat\_solution}$ to be the heat kernel with initial unit heat at pixel $(7,9)$. Evaluating $\texttt{heat\_solution}$ at a time $t$ gives a matrix representing $h(t,(7,9),y)$.
+Below we have defined $\texttt{heat\_solution}$ to be the heat kernel with initial unit heat at pixel $(7,9)$. Evaluating $\texttt{heat\_solution}$ at a time $t$ gives a matrix representing $h(t,(7,9),y)$. The variable $\texttt{t\_varadhan}$ corresponds is the value of the slider.
 """
 
 # ╔═╡ c814f0d2-cbb0-4db9-9499-993d51f42356
@@ -242,110 +237,41 @@ Below we have defined $\texttt{heat\_solution}$ to be the heat kernel with initi
 
 # ╔═╡ e1c19aea-d671-4c01-8bcf-119e7abb295f
 md"""
-Not great but not bad. We do see that the estimates get moderately better for smaller $t$ though the error is still significant near the source. Why do these artifacts appear? First, we cannot push $t$ arbitrary close to $0$. For extremely small values of $t$, the solver's numerical accuracy degrades (move the slider to the left to see numerical errors). This is not just a limitation of the differential equation solver. To simulate heat diffusion, the square was already discretized into an $N\times N$ grid with a single unit of heat placed at the cell $(7,9)$. Already this is 
+Not great but not bad. We do see that the estimates get moderately better for smaller $t$ though the relative error is still significant near the source. Why do these artifacts appear? First, we cannot push $t$ arbitrary close to $0$. For extremely small values of $t$, the solver's numerical accuracy degrades (move the slider to the left to see numerical errors). This is not just a limitation of the differential equation solver. To simulate heat diffusion, the square was already discretized into an $N\times N$ grid with a single unit of heat placed at the cell $(7,9)$. ...
 """
 
 # ╔═╡ 54c232ba-1175-40a3-b5a9-729450905e9f
 md"""
 ### Eikonal Equation
-Well Varadhan's formula was good first attempt, but unfortunately the fundamental inaccuracities due to numerical and discretization error puts a hard limit on this approach. Instead of refining results from Varadhan's formula, the paper instead takes an alternative approach. From section 
-1
-1, I briefly mentioned that finding the geodesics amounts to find paths that stricly cool down the further down you travel the path. Crane et al. leverage this observation by relating it to the Eikonal equation. While the PDE was originally used to model optics, there is a close relationship to how geodesic distances are measured. Let's go back to the water analogy mentioned in the introduction section. We can image tiny particles of water flowing from the source and into the rest of the surface - points closer to the source will be in contact with the water sooner than points further from the source. If we take a snapshot of the puddle after a second, the boundary of the puddle is the furthest any particle of water has traveled. As time progresses, this boundary moves away from the source, kind of like a wavefront. Indeed, ignoring complicated fluid nonsense and taking the analogy quite liberally, all of the boundary particles are exactly the same distance away from the source because the wavefront moved at the same rate away from the source. Thus we can take a lot of snapshots of the puddle to see how the wavefront evolves over time. Each snapshot will tell us of a level curve, the wavefront, which will indicate all particles that have traveled the same distance away from the source. This is captured precisely as the following PDE:
+Well Varadhan's formula was good first attempt, but unfortunately the fundamental inaccuracities due to numerical and discretization error puts a hard limit on this approach. Instead of refining results from Varadhan's formula, the paper instead takes an alternative approach. From Section ??? we discussed that geodesics correspond to find paths that cool down the further down you travel. Crane et al. leverage this observation by relating it to the Eikonal equation: 
 
-∣
-∇
-�
-(
-�
-)
-∣
-=
-1
-∣∇u(x)∣=1
-subject to the boundary condition 
-�
-(
-�
-)
-=
-0
-u(x)=0 for 
-�
-=
-�
-x=s where 
-�
-M is the mesh and 
-�
-s is the source vertex. If we solve the Eikonal equation, then our prize is the distance function 
-�
-(
-�
-)
-u(x). Now let's deconstruct the equation.
-
-Figure here showing Eikonal equation solution as a propagating wavefront.
-
-The boundary condition just says that the 
-�
-s should have distance 
-0
-0. Seems reasonable. The Eikonal equation describes something interesting about the distance function's gradient. Remember that the gradient of a function 
-∇
-�
-(
-�
-)
-∇f(x) indicates which direction to move from 
-�
-x so that 
-�
-f changes the most. Moreover 
-∇
-�
-(
-�
-)
-∇f(x) is orthogonal to the level sets of 
-�
-f. But what exactly is our function here? It is 
-�
-(
-�
-)
-u(x), a distance function The isolines are the wavefronts, and moving along a path perpendicular to the wavefronts away from the source means that the 
-�
-(
-�
-)
-u(x) only changes at a constant rate. The distance 
-�
-(
-�
-)
-u(x) changes exactly the same rate as distance changes or more precisely 
-∣
-∇
-�
-(
-�
-)
-∣
-=
-1
-∣∇u(x)∣=1! As my friend puts it, "the Eikonal equation is the most based equation with the simple observation that distance changes one meter per meter." It's almost tautological...
-
-So instead of evaluating Varadhan's formula, we evaluate the Eikonal equation and problem solved? Sorry to dissappoint again, but unfortunately the Eikonal equation is a bit too difficult to solve accurately, even by simulation. This isn't to say that people don't try to solve it, they do and have succeeded in getting good estimates. Fast marching is a whole class of approximation algorithms that takes the wave front analogy to the extreme. The problem is that many of these algorithms need to approximate the wave front which can be some what fickly. There are exact solvers, but even these incur large runtime costs, almost on the order of 
-�
-(
-�
-3
-)
-O(n 
-3
- ). One again, the paper takes another turn to save the day.
+$\vert \nabla u(x)\vert=1$ for $x\in M$ with boundary condition $u(s)=0$ for where $s$ is the source point. Here $\mathcal{M}$ represents the surface (e.g. square plate).
 
 
+The Eikonal equation is a PDE used to describe shortest paths from a source point, and the solution $u$ represents the distance function from $s$. The boundary condition states that $u(x)$ must start at $0$ for the source point. More generally, the boundary condition can be expanded to include multiple source points or even a section of space. Below are some examples of solutions to the Eikonal equation with various sources [^3].
+"""
+
+# ╔═╡ dd03796a-0520-418a-88f3-f11547b05a19
+let
+end
+
+# ╔═╡ 217ac117-5415-4938-a543-8ebe5cca7898
+md"""
+Why does $u(x)$ describe the distance function? A helpful analogy is to think how spilt water moves across a surface. Tiny water particles flow away from the source, forming a puddle. The particle at the boundary, or wavefront, consist of particles that have traveled the furthest from the source and had to have traveled at the same rate to get to where they are at now. Thus the boundary represents all the particles that are equidistant from the source, in other words, the boundary is an *level set* mapping $u$ to the same distance. We can imagine letting this puddle continue growing and the wavefront expanding away. This of course represents $u$ increasing. 
+"""
+
+# ╔═╡ 17ca6c6a-d282-457d-961d-40275a01927a
+md"""
+So how does the analogy connect with the constraint $\vert \nabla u(x)\vert = 1$? Recall that $\nabla u(x)$ is the gradient and represents the direction of the largest change in distance at $x$. But since $u(x)$ is a distance function, it changes the most by increasing the distance it self, which means expanding the wavefront away from the origin as indicated by the arrows above. The speed of the wavefront is governed by the magnitude of $\nabla u(x)$. Notice that there is something funny going on with the units of $\nabla u(x)$. It basically represents the rate of change of the distance function with respect to the change in distance. Aha! That's where the $\nabla u(x)=1$ comes from. All it is trying to say is that "distance changes $1$ meter per meter"[^4]. Almost tautological...
+
+So instead of evaluating Varadhan's formula, we evaluate the Eikonal equation and problem solved? Sorry to dissappoint again, but unfortunately the Eikonal equation is a bit too difficult to solve accurately, even by simulation. This isn't to say that people don't try to solve it, they do and have succeeded in getting good estimates. Fast marching is a whole class of approximation algorithms that takes the wave front analogy to the extreme. The problem is that many of these algorithms need to approximate the wave front which can be some what fickly. There are exact solvers, but even these incur large runtime costs, almost on the order of $O(n^3)$. Once again, the paper takes another turn to save the day.
+"""
+
+# ╔═╡ 7ec2e638-f7af-410e-8b09-7f1f4e40825b
+md"""
+# The Heat Method
+
+The Heat Method repurposes the Eikonal equation, but instead of explicitly solving it it makes use of three stages: simulating heat, computing the gradient, and solving a Poisson equation. 
 """
 
 # ╔═╡ 6c50e998-5265-11ee-26eb-0f88bae8e979
@@ -415,31 +341,16 @@ let
 	
 end
 
-# ╔═╡ 7ec2e638-f7af-410e-8b09-7f1f4e40825b
+# ╔═╡ 71b24653-c6e2-4539-b8cc-082b3d838da7
 md"""
-# The Heat Method
+# Heat Method on Meshes
+
+Up to this point, the examples were only of square plates, but the most interesting problems arise in 3D with meshes and point clouds. Luckily the Heat Method carries over to this regime.
 """
 
-# ╔═╡ 22ff8df4-2902-4ebc-ab43-6a14f38113c6
-@bind tt PlutoUI.Slider(1:0.05:2)
-
-# ╔═╡ aec2c069-00a1-405f-b3d6-f1db253222fd
-let
-	x = [tt, 1, 2, 0]
-	y = [0, 0, tt, 2]
-	z = [0, tt, 0, 1]
-	i = [0, 0, 0, 1]
-	j = [1, 2, 3, 2]
-	k = [2, 3, 1, 3]
-	
-	mesh3d(x, y, z; connections = (i, j, k), 
-    title = "triangles", xlabel = "x", ylabel = "y", zlabel = "z", 
-    legend = :none, margin = 2 * Plots.mm, alpha = 0.2, ticks=false)
-end
-
-# ╔═╡ 635c6007-f158-45da-9019-15d3146e0b50
+# ╔═╡ bba54dba-5ba4-4073-894c-c6fecbf3f590
 md"""
-### Simulating Heat Diffusion
+### Discretizing ∇, ∇⋅, and Δ
 """
 
 # ╔═╡ 1978ada5-5a05-4254-8e0b-33717bed0aa3
@@ -710,16 +621,16 @@ e
 v and end at the opposite vertices. Take note of the ordering and see Figure .
 """
 
-# ╔═╡ 28a8d2df-d794-4cbf-8641-2324b8d172e4
+# ╔═╡ 611b3854-ba93-46d1-b270-4c6ddeea6585
 md"""
-Heat Diffusion Simulation
-There are two common ways to solve the heat equation if given the operator 
-�
-L. The first one is an iterative approach that uses the entries of 
-�
-L to update the solution like how computing with a stencil works. The second method solves the equation in a manner similar to what a person would do to solve a PDE like the heat equation by hand - by finding the eigenfunctions.
+### Handwriting DiffEq.jl
 
-Iterative Mode
+There are two common ways to solve the heat equation if given the operator $L$. The first one is an iterative approach that uses the entries of $L$ to update the solution like how computing with a stencil works. The second method solves the equation in a manner similar to what a person would do to solve a PDE like the heat equation by hand - by finding the eigenfunctions.
+"""
+
+# ╔═╡ b23e2924-a4ee-429e-b470-ceafa0dffc88
+md"""
+##### Iterative Mode
 Back in calculus, we used Euler's method to solve the solutions to a differential equation. The finer the resolution of the update - in our case time 
 �
 t, the more accurate our solutions were. Let 
@@ -847,11 +758,18 @@ t
  h 
 t
 ​
- 
-Spectral Mode
-Spectral mode uses the eigenfunctions of the Laplacian by exploiting linearity. Recall Sturm-Lioville Theory:
+"""
+
+# ╔═╡ 15634a5e-3e52-4076-8f04-d606c0caa828
+md"""
+##### Spectral Mode
 
 https://services.math.duke.edu/~jtwong/math353-2018/lectures/Notes-PDEs1.pdf We are in luck. The theorem states that so long as we find the eigenfunctions satisfying the boundary conditions, then we can solve the heat equation for any initial condition that also satisfies the boundary equations. All there is to do is to decompose the initial heat function into a linear combination. Assume Dirichlet boundary conditions.
+"""
+
+# ╔═╡ 28a8d2df-d794-4cbf-8641-2324b8d172e4
+md"""
+
 """
 
 # ╔═╡ cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
@@ -900,9 +818,9 @@ The heat method can be extended to other domains. Really, so long as you have a 
 # ╔═╡ a9dfc324-03ec-4884-a19e-4371ac069e1b
 md"""
 [^1]: Paper: https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperCACM.pdf
-
-[^xyz]: Author et al. (2022) *Journal of Footnotes*, 123, 45.
-        
+[^2]: We will address how to simulate heat in a later section.
+[^3]: These plots were generated using the Fast Marching Method, another algorithm to approximate geodesics. The down side of the Fast Marching Method - and one of the original motiviations for the Heat Method - is that is is slow. Check out [Eikonal.jl](https://github.com/triscale-innov/Eikonal.jl) for an implementation.
+[^4]: A friend of mine considers this to be the most based PDE of all PDEs. 
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -2849,23 +2767,27 @@ version = "1.4.1+0"
 # ╟─3a23522e-d7d6-4461-bd33-878e1c823ea6
 # ╟─0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
 # ╟─7564b349-5d51-44a0-b78a-654cd1bbfb61
-# ╟─09631a50-c2fc-4874-aa10-937bc9f5a092
 # ╟─96fdedc9-3adf-4e46-9a50-d0b38bd38caf
 # ╠═c89ce545-5229-418e-a174-e2e4eddc1115
 # ╟─2dad5bf2-ac9c-4767-ac37-3abd252f338a
 # ╟─c814f0d2-cbb0-4db9-9499-993d51f42356
 # ╠═2e4e7cf6-0034-4992-9ea0-f212b4111fc1
-# ╠═e1c19aea-d671-4c01-8bcf-119e7abb295f
+# ╟─e1c19aea-d671-4c01-8bcf-119e7abb295f
 # ╟─54c232ba-1175-40a3-b5a9-729450905e9f
-# ╠═6c50e998-5265-11ee-26eb-0f88bae8e979
+# ╠═dd03796a-0520-418a-88f3-f11547b05a19
+# ╟─217ac117-5415-4938-a543-8ebe5cca7898
+# ╟─17ca6c6a-d282-457d-961d-40275a01927a
 # ╠═7ec2e638-f7af-410e-8b09-7f1f4e40825b
-# ╠═22ff8df4-2902-4ebc-ab43-6a14f38113c6
-# ╠═aec2c069-00a1-405f-b3d6-f1db253222fd
-# ╠═635c6007-f158-45da-9019-15d3146e0b50
+# ╠═6c50e998-5265-11ee-26eb-0f88bae8e979
+# ╠═71b24653-c6e2-4539-b8cc-082b3d838da7
+# ╠═bba54dba-5ba4-4073-894c-c6fecbf3f590
 # ╟─1978ada5-5a05-4254-8e0b-33717bed0aa3
-# ╟─28a8d2df-d794-4cbf-8641-2324b8d172e4
+# ╠═611b3854-ba93-46d1-b270-4c6ddeea6585
+# ╠═b23e2924-a4ee-429e-b470-ceafa0dffc88
+# ╠═15634a5e-3e52-4076-8f04-d606c0caa828
+# ╠═28a8d2df-d794-4cbf-8641-2324b8d172e4
 # ╠═cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
 # ╟─2a5ae2f3-f9a0-4ade-9307-f617a41e36ce
-# ╠═a9dfc324-03ec-4884-a19e-4371ac069e1b
+# ╟─a9dfc324-03ec-4884-a19e-4371ac069e1b
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
