@@ -3,8 +3,8 @@ using Plots
 
 function initialize_grid(dx,dy)
     grid = zeros(length(dx),length(dy))
-    grid[1, 1] = 300.0
-    grid[end, end] = 300.0
+    N = ceil(Int,length(dx)//2)
+    grid[N, N] = 1.0
     grid
 end
 
@@ -20,17 +20,21 @@ function laplacian(du,u,p,t)
     end
 end
 
+function varadhan_theorem(t, heat)
+    sqrt.(-t * log.(heat)/4)
+end
+
 N = 21
 dx = range(-1,1,N)
 dy = range(-1,1,N)
 u0 = initialize_grid(dx,dy)
-problem = ODEProblem(laplacian, u0,(0, 10.0), (10, step(dx)))
+problem = ODEProblem(laplacian, u0,(0, 1.0), (10, step(dx)))
 soln = solve(problem)
-# heatmap(x,y,sol(t_viz), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(-1,1), ylims=(-1,1), background_color_subplot=false, clims=cfunc)
+t = 0.01
+dists = varadhan_theorem(t,soln(t))
+minimum(dists)
 begin
-    heatmap(dx, dy, soln(0.1), aspect_ratio=:equal, xlims=(-1,1), ylims=(-1,1),legend=false)
-    xx
-    fig1 = scatter!([0.9, -0.2, -0.9],[0.9, -0.2, 0.9], markersize=5, color=:green, markerstrokewidth=0)
-    fig2 = plot(bar(["a","b","c"], [1,2,3],  labels=["a","b","c"]), ylabel="Heat")
+    fig1 = heatmap(dx, dy, soln(0.01), aspect_ratio=:equal, xlims=(-1,1), ylims=(-1,1),legend=false)
+    fig2 = heatmap(dx, dy, dists, aspect_ratio=:equal, xlims=(-1,1), ylims=(-1,1),legend=false)
     plot(fig1, fig2, layout = (1, 2), legend = false)
 end

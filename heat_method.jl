@@ -184,11 +184,11 @@ end
 md"""
 # Intuition by Leveraging Heat
 
-How do we use heat to produce a notion of distance? Let's continue with the running example of a metal square surface that is initially $0^{\circ}$F everywhere. Now let us take a red-hot needle and touch the center of the plate. At $t=0$ only the center of the plate is hot - say $100^\circ$ F. After a while, the heat flows away from the concentrated center to the boundaries, and this process is governed according to a diffusion equation. Time elapsed means that more of the plate becomes warmer while the center slowly cools down. 
+How do we use heat to produce a notion of distance? Let's continue with the running example of a metal square surface that is initially $0^{\circ}$F everywhere. Now let us take a red-hot needle and touch the center of the plate. At $t=0$ only the center of the plate is hot - say $100^\circ$ F. After a while, the heat flows away from the concentrated center to the boundaries, and this process is governed according to a diffusion equation known as the [heat equation](https://en.wikipedia.org/wiki/Heat_equation) [^2]. Time elapsed means that more of the plate becomes warmer while the center slowly cools down.
 """
 
 # ╔═╡ 0350b1d6-4245-4b86-8b45-be9c00a16c77
-md"""t =  $(@bind t_viz PlutoUI.Slider(0:0.01:10, show_value=true))"""
+md"""t =  $(@bind t_viz PlutoUI.Slider(range(0,1,101), show_value=true))"""
 
 # ╔═╡ ac43bbab-3014-4ece-b738-157e6367f734
 md"""
@@ -208,22 +208,10 @@ There are two interesting insights from the bar plot. The first is confirmation 
 
 It seems that to get high quality measurements, we need to operate in a middle ground. On one extreme, we must avoid running the simulation for too long or else the surface will reach an equilibrium. On the other extreme, we need to run the simulation for some small non-zero time to begin diffusion. The next section formalizes this intuition and presents our first algorithm to compute geodesics."""
 
-# ╔═╡ 22ff8df4-2902-4ebc-ab43-6a14f38113c6
-@bind tt PlutoUI.Slider(1:0.05:2)
-
-# ╔═╡ aec2c069-00a1-405f-b3d6-f1db253222fd
-let
-	x = [tt, 1, 2, 0]
-	y = [0, 0, tt, 2]
-	z = [0, tt, 0, 1]
-	i = [0, 0, 0, 1]
-	j = [1, 2, 3, 2]
-	k = [2, 3, 1, 3]
-	
-	mesh3d(x, y, z; connections = (i, j, k), 
-    title = "triangles", xlabel = "x", ylabel = "y", zlabel = "z", 
-    legend = :none, margin = 2 * Plots.mm, alpha = 0.2, ticks=false)
-end
+# ╔═╡ 09631a50-c2fc-4874-aa10-937bc9f5a092
+md"""
+[^2]: We will address how to simulate heat in a later section.
+"""
 
 # ╔═╡ 96fdedc9-3adf-4e46-9a50-d0b38bd38caf
 md"""
@@ -232,30 +220,132 @@ md"""
 The relationship between heat flow and distance is captured by an elegant expression known as Varadhan's formula.
 
 $$\lim\limits_{t\rightarrow 0^+} t \log h(t,x,y) = -4d(x,y)^2$$
-lim
 
-Here $d(x,y)$ is the geodesic distance between points $x$ and $y$.
+Here $d(x,y)$ is the geodesic distance between points $x$ and $y$. The function $h(t,x,y)$ is known as the *heat kernel*. The heat kernel describes how heat evolves on the surface if we initially placed one unit of heat at $x$. Then $h(t,x,y)$ refers to the amount of heat at $y$ at time $t$ when one unit of heat was placed at $x$. For example, Fig ? shows a heat kernel where $x=(0,0)$.
 
-$h(t,x,y)$ is the heat kernel. Explain het kernel. Now there are some technical conditions that need to hold for pairs of points. I'm not too familiar with the details to comment further, and luckily we won't need to worry about satisfying the assumptions.
+This formula gives us a direct way to estimate $d(x,y)$. First we place a unit of heat at at the source $x$ and simulate for a short period of time. Then we measure the temperature at $y$ to find the value of $h(t,x,y)$. For small $t$, we can do a substitution to obtain $d(x,y)$ to get a decent approximation.
 
-This formula gives us a direct way to estimate $d(x,y)$. First we place a unit of heat at at the source $x$ and simulate for some time $t$. Then we measure the temperature at 
-$y$ to find the value of 
-$h(tx,y)$. For small time 
-$t$, we can substitute the values into the formula to obtain 
-$d(x,y)$. I will gloss over for now on how the heat flow implementation on a computer and so for now just assume that we can do so. Let's see what we get:
+First let's write the formula.
 
-Figure 1 - First panel is heat diffusion. Second panel is geodesics by apply varadhan's formula
+"""
 
-Not a bad approximation. But let's take a closer look at the quality of the results. Figure ? shows the how the values of distance changes with respect to the heat kernel. We see that the quality is low.
+# ╔═╡ c89ce545-5229-418e-a174-e2e4eddc1115
+varadhan_formula(t, heat) = sqrt.(-4t * log.(heat))
 
-Figure 2 - Three graphs showing discretization imprecisions
+# ╔═╡ 2dad5bf2-ac9c-4767-ac37-3abd252f338a
+md"""
+Below we have defined $\texttt{heat\_solution}$ to be the heat kernel with initial unit heat at pixel $(7,9)$. Evaluating $\texttt{heat\_solution}$ at a time $t$ gives a matrix representing $h(t,(7,9),y)$.
+"""
 
-Why do these artifacts appear? Well it turns out discretization (as we will later discuss how to do) places fundamental limits on the resolution of heat diffusion. Finer discretizations yield more accurate solutions whereas low discretizations produce highly quantized results. Thus a lot of "bucketing" is going on as show in the previous figure.
+# ╔═╡ c814f0d2-cbb0-4db9-9499-993d51f42356
+@bind t_varadhan Slider(range(0,0.01, 101), show_value=true, default=0.005)
+
+# ╔═╡ e1c19aea-d671-4c01-8bcf-119e7abb295f
+md"""
+Not great but not bad. We do see that the estimates get moderately better for smaller $t$ though the error is still significant near the source. Why do these artifacts appear? First, we cannot push $t$ arbitrary close to $0$. For extremely small values of $t$, the solver's numerical accuracy degrades (move the slider to the left to see numerical errors). This is not just a limitation of the differential equation solver. To simulate heat diffusion, the square was already discretized into an $N\times N$ grid with a single unit of heat placed at the cell $(7,9)$. Already this is 
 """
 
 # ╔═╡ 54c232ba-1175-40a3-b5a9-729450905e9f
 md"""
 ### Eikonal Equation
+Well Varadhan's formula was good first attempt, but unfortunately the fundamental inaccuracities due to numerical and discretization error puts a hard limit on this approach. Instead of refining results from Varadhan's formula, the paper instead takes an alternative approach. From section 
+1
+1, I briefly mentioned that finding the geodesics amounts to find paths that stricly cool down the further down you travel the path. Crane et al. leverage this observation by relating it to the Eikonal equation. While the PDE was originally used to model optics, there is a close relationship to how geodesic distances are measured. Let's go back to the water analogy mentioned in the introduction section. We can image tiny particles of water flowing from the source and into the rest of the surface - points closer to the source will be in contact with the water sooner than points further from the source. If we take a snapshot of the puddle after a second, the boundary of the puddle is the furthest any particle of water has traveled. As time progresses, this boundary moves away from the source, kind of like a wavefront. Indeed, ignoring complicated fluid nonsense and taking the analogy quite liberally, all of the boundary particles are exactly the same distance away from the source because the wavefront moved at the same rate away from the source. Thus we can take a lot of snapshots of the puddle to see how the wavefront evolves over time. Each snapshot will tell us of a level curve, the wavefront, which will indicate all particles that have traveled the same distance away from the source. This is captured precisely as the following PDE:
+
+∣
+∇
+�
+(
+�
+)
+∣
+=
+1
+∣∇u(x)∣=1
+subject to the boundary condition 
+�
+(
+�
+)
+=
+0
+u(x)=0 for 
+�
+=
+�
+x=s where 
+�
+M is the mesh and 
+�
+s is the source vertex. If we solve the Eikonal equation, then our prize is the distance function 
+�
+(
+�
+)
+u(x). Now let's deconstruct the equation.
+
+Figure here showing Eikonal equation solution as a propagating wavefront.
+
+The boundary condition just says that the 
+�
+s should have distance 
+0
+0. Seems reasonable. The Eikonal equation describes something interesting about the distance function's gradient. Remember that the gradient of a function 
+∇
+�
+(
+�
+)
+∇f(x) indicates which direction to move from 
+�
+x so that 
+�
+f changes the most. Moreover 
+∇
+�
+(
+�
+)
+∇f(x) is orthogonal to the level sets of 
+�
+f. But what exactly is our function here? It is 
+�
+(
+�
+)
+u(x), a distance function The isolines are the wavefronts, and moving along a path perpendicular to the wavefronts away from the source means that the 
+�
+(
+�
+)
+u(x) only changes at a constant rate. The distance 
+�
+(
+�
+)
+u(x) changes exactly the same rate as distance changes or more precisely 
+∣
+∇
+�
+(
+�
+)
+∣
+=
+1
+∣∇u(x)∣=1! As my friend puts it, "the Eikonal equation is the most based equation with the simple observation that distance changes one meter per meter." It's almost tautological...
+
+So instead of evaluating Varadhan's formula, we evaluate the Eikonal equation and problem solved? Sorry to dissappoint again, but unfortunately the Eikonal equation is a bit too difficult to solve accurately, even by simulation. This isn't to say that people don't try to solve it, they do and have succeeded in getting good estimates. Fast marching is a whole class of approximation algorithms that takes the wave front analogy to the extreme. The problem is that many of these algorithms need to approximate the wave front which can be some what fickly. There are exact solvers, but even these incur large runtime costs, almost on the order of 
+�
+(
+�
+3
+)
+O(n 
+3
+ ). One again, the paper takes another turn to save the day.
+
+
 """
 
 # ╔═╡ 6c50e998-5265-11ee-26eb-0f88bae8e979
@@ -277,7 +367,7 @@ begin
 	    N = length(dxy)
 	    u = zeros(N,N)
 	    mid = ceil(Int, N/2)
-	    u[mid,mid] =300.0
+	    u[mid,mid] =1.0
 	    u
 	end
 end
@@ -285,17 +375,19 @@ end
 
 # ╔═╡ e7080c15-ac7e-4106-8df4-65a668e39b83
 let
-	N = 50
-	dxy = range(-1, 1, N)
+	N = 31
+	u0 = zeros(N,N)
+	mid = ceil(Int, N/2)
+	u0[mid,mid] =10.0
+	L = 0.1
+	dxy = range(-L, L, N)
 	x = dxy
 	y = dxy
-	u0 = init_heat_map(dxy)
-	p = (0.01, step(dxy))
-	prob = ODEProblem(laplacian, u0, (0.0, 20.0), p)
+	p = (0.001, step(dxy))
+	prob = ODEProblem(laplacian, u0, (0.0, 2.0), p)
 	sol = solve(prob)
-	nothing
-	cfunc(x) = (0.0, maximum(x)+sqrt(100/(200-maximum(x)/2)))
-	p1 = heatmap(x,y,sol(t_viz), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(-1,1), ylims=(-1,1), background_color_subplot=false, clims=cfunc)
+	cfunc(x) = (0.0, maximum(x))
+	p1 = heatmap(x,y,sol(t_viz), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(-L,L), ylims=(-L,L), background_color_subplot=false, clims=cfunc)
 	plot!(size=(400,400))
 end
 
@@ -322,6 +414,488 @@ let
     plot(fig1, fig2, layout = layout, legend = false)
 	
 end
+
+# ╔═╡ 7ec2e638-f7af-410e-8b09-7f1f4e40825b
+md"""
+# The Heat Method
+"""
+
+# ╔═╡ 22ff8df4-2902-4ebc-ab43-6a14f38113c6
+@bind tt PlutoUI.Slider(1:0.05:2)
+
+# ╔═╡ aec2c069-00a1-405f-b3d6-f1db253222fd
+let
+	x = [tt, 1, 2, 0]
+	y = [0, 0, tt, 2]
+	z = [0, tt, 0, 1]
+	i = [0, 0, 0, 1]
+	j = [1, 2, 3, 2]
+	k = [2, 3, 1, 3]
+	
+	mesh3d(x, y, z; connections = (i, j, k), 
+    title = "triangles", xlabel = "x", ylabel = "y", zlabel = "z", 
+    legend = :none, margin = 2 * Plots.mm, alpha = 0.2, ticks=false)
+end
+
+# ╔═╡ 635c6007-f158-45da-9019-15d3146e0b50
+md"""
+### Simulating Heat Diffusion
+"""
+
+# ╔═╡ 1978ada5-5a05-4254-8e0b-33717bed0aa3
+md"""
+Discretizing  
+∇
+∇, 
+∇
+⋅
+∇⋅ and 
+Δ
+Δ
+
+The previous discussion helped us formulate the plan of attack, but now our setting is in the real world with discrete meshes - little is continuous and we have to make hard decisions on how to discretize the computation. There is no right way to go about this since trade offs exist as all things typical in geometry processing and PDE simulation. The choice of discretization can depend on several factors such as how the mesh is discretized and whether the mesh satisfies manifold assumptions or not. For now, I refer you to some lecture notes on Laplacians and Vector Fields. Now the paper highlights some possible discretization for the operators, and I will discuss the most common choice.
+
+Cotangent Laplacian
+Warning 2 (consider putting this in a box?) By far the most popular discretization for the Laplace-Beltrami operator is the cotanget Laplacian. You will see this choice in virtually most geometry processing papers as their first choice. The operator is defined as a (typically sparse) 
+∣
+�
+∣
+×
+∣
+�
+∣
+∣V∣×∣V∣ matrix, acting on a 
+�
+∣
+�
+∣
+R 
+∣V∣
+  vectors.
+
+�
+�
+�
+=
+L 
+ij
+​
+ =
+This is actually the unweighted version. The weighted version incorporates the vertex-based areas to weight the entries of 
+�
+L. Vertices that amass a larger area need to be weighted down whereas vertices that cover little area are upweighted. Concretely, we define a matrix 
+�
+=
+diag
+(
+�
+)
+A=diag(a) where 
+�
+∈
+�
+∣
+�
+∣
+a∈R 
+∣V∣
+  are the vertex-based areas. The true cotangent Laplacian is then 
+�
+−
+1
+�
+A 
+−1
+ L.
+
+footnote - Wait vertex area? How does a vertex have an area? Here you can consider the barycentric area - the sum of the areas of the faces adjacent to the vertex divided by 
+3
+3. Again refer to https://graphics.pixar.com/library/VectorFieldCourse/paper.pdf
+
+Div and Grad
+It turns out that if we want to use the cotangent Laplacian for our choice of 
+Δ
+Δ, then we need to be careful when defining 
+∇
+∇ and 
+∇
+⋅
+∇⋅. These operators need to satisfy the relationship 
+∇
+⋅
+(
+∇
+�
+)
+=
+Δ
+�
+∇⋅(∇u)=Δu (show yourself why it is true for Euclidean case).
+
+Here we define a face-based gradient operator which takes a scalar field 
+�
+∣
+�
+∣
+R 
+∣
+ V∣ and produces vectors for each face of the mesh. The vectors lie in the plane of the faces by design. For every triangle, the gradient is
+
+(
+∇
+�
+)
+�
+=
+1
+2
+�
+�
+∑
+�
+=
+1
+3
+�
+�
+(
+N
+×
+e
+�
+)
+(∇u) 
+f
+​
+ = 
+2A 
+f
+​
+ 
+1
+​
+  
+j=1
+∑
+3
+​
+ u 
+j
+​
+ (N×e 
+j
+​
+ )
+I'm slightly abusing the notation - the sum is over the three vertices of the triangle. 
+�
+�
+u 
+j
+​
+  are the scalar values of the vertices and 
+e
+�
+e 
+j
+​
+  is the edge opposite to the vertex. See the Figure below.
+
+Explain what the definition of gradient is.
+
+With 
+∇
+∇ defined, the correspondencing choice of 
+∇
+⋅
+∇⋅ should satisfy the relationship. The paper defines it as
+
+(
+∇
+⋅
+�
+)
+�
+=
+1
+2
+∑
+�
+cot
+⁡
+�
+1
+(
+�
+2
+⋅
+�
+�
+)
++
+cot
+⁡
+�
+2
+(
+�
+1
+⋅
+�
+�
+)
+(∇⋅X) 
+v
+​
+ = 
+2
+1
+​
+  
+j
+∑
+​
+ cotθ 
+1
+​
+ (e 
+2
+​
+ ⋅X 
+j
+​
+ )+cotθ 
+2
+​
+ (e 
+1
+​
+ ⋅X 
+j
+​
+ )
+where 
+�
+X is the vector field and 
+�
+j is a sum over all the adjacent triangles to a vertex 
+�
+v. The angles 
+�
+1
+θ 
+1
+​
+  and 
+�
+2
+θ 
+2
+​
+  are the angles opposite of vertex 
+�
+v on the triangle. The edges 
+�
+1
+e 
+1
+​
+  and 
+�
+2
+e 
+2
+​
+  eminate from 
+�
+v and end at the opposite vertices. Take note of the ordering and see Figure .
+"""
+
+# ╔═╡ 28a8d2df-d794-4cbf-8641-2324b8d172e4
+md"""
+Heat Diffusion Simulation
+There are two common ways to solve the heat equation if given the operator 
+�
+L. The first one is an iterative approach that uses the entries of 
+�
+L to update the solution like how computing with a stencil works. The second method solves the equation in a manner similar to what a person would do to solve a PDE like the heat equation by hand - by finding the eigenfunctions.
+
+Iterative Mode
+Back in calculus, we used Euler's method to solve the solutions to a differential equation. The finer the resolution of the update - in our case time 
+�
+t, the more accurate our solutions were. Let 
+ℎ
+�
+(
+�
+)
+h 
+t
+​
+ (x) be the heat on the mesh at time 
+�
+t. We linearize the time dimension which yields roughly
+
+−
+�
+−
+1
+�
+ℎ
+�
+≈
+ℎ
+�
+′
+−
+ℎ
+�
+�
+�
+−A 
+−1
+ Lh 
+t
+​
+ ≈ 
+dt
+h 
+t 
+′
+ 
+​
+ −h 
+t
+​
+ 
+​
+ 
+or
+
+ℎ
+�
+′
+=
+ℎ
+�
+−
+�
+�
+⋅
+�
+−
+1
+�
+ℎ
+�
+h 
+t 
+′
+ 
+​
+ =h 
+t
+​
+ −dt⋅A 
+−1
+ Lh 
+t
+​
+ 
+Equation (...) is referred to as foward-mode integration since we take the previously known value and use the derivative to update it. This works and is generally fast, but I want to point out a slight variant that happens to be more stable. It turns out that if we replace 
+�
+ℎ
+�
+Lh 
+t
+​
+  and 
+�
+ℎ
+�
+′
+Lh 
+t 
+′
+ 
+​
+  as our choice of the derivative, then this is referred to as semi-implicit integration. The update rule then becomes
+
+�
+ℎ
+�
+′
+=
+(
+�
++
+�
+�
+⋅
+�
+)
+−
+1
+ℎ
+�
+Ah 
+t 
+′
+ 
+​
+ =(A+dt⋅L) 
+−1
+ h 
+t
+​
+ 
+Spectral Mode
+Spectral mode uses the eigenfunctions of the Laplacian by exploiting linearity. Recall Sturm-Lioville Theory:
+
+https://services.math.duke.edu/~jtwong/math353-2018/lectures/Notes-PDEs1.pdf We are in luck. The theorem states that so long as we find the eigenfunctions satisfying the boundary conditions, then we can solve the heat equation for any initial condition that also satisfies the boundary equations. All there is to do is to decompose the initial heat function into a linear combination. Assume Dirichlet boundary conditions.
+"""
+
+# ╔═╡ cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
+function heat_kernel(N, x, L)
+	u0 = zeros(N,N)
+	mid = ceil(Int, N/2)
+	u0[x...] =1.0
+	dxy = range(-L, L, N)
+	x = dxy
+	y = dxy
+	p = (1, step(dxy))
+	prob = ODEProblem(laplacian, u0, (0.0, 0.5), p)
+	sol = solve(prob)
+end
+
+# ╔═╡ 2e4e7cf6-0034-4992-9ea0-f212b4111fc1
+let
+	N = 31
+	L = 0.5
+	mid = (7,9)
+	heat_solution = heat_kernel(N, (7,9), L)
+	heat = heat_solution(t_varadhan)
+	dist_estimates = varadhan_formula(t_varadhan, heat)
+
+	# Compute true distances
+	d(x,y) = sqrt((x-mid[1])^2 + (y-mid[2])^2)/N
+	dist_true = d.((1:N)', 1:N)
+	
+	relative_error = abs.(dist_true - dist_estimates) ./ dist_true
+	
+	fig1 = heatmap(1:N,1:N, heat, aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(1,N), ylims=(1,N), background_color_subplot=false, title="Heat")
+	fig2 = heatmap(1:N,1:N,dist_estimates, aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(1,N), ylims=(1,N), background_color_subplot=false, colormap=:viridis, title="Estimated Distance")
+	fig3 = heatmap(1:N,1:N,dist_true, aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(1,N), ylims=(1,N), background_color_subplot=false, colormap=:viridis, title="True Distance")
+	fig4 = heatmap(1:N,1:N,relative_error, aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(1,N), ylims=(1,N), background_color_subplot=false, colormap=:viridis, title="Relative Error")
+	plot(fig1, fig2, fig3, fig4, label=(1,2,3,4))
+
+end
+
+# ╔═╡ 2a5ae2f3-f9a0-4ade-9307-f617a41e36ce
+md"""
+Extra:
+Shortest paths on graphs
+The heat method can be extended to other domains. Really, so long as you have a way of taking Laplacians, gradients, and divergences then in principle you can repeat all steps and get a heat method for your domain of interest. Graphs are another type of setting with Laplacians. Laplacians defined for graphs are a popular tool in machine learning for normalization so their properties are well established. When I tried implementing this however, I encountered problems in defining a divergence discretization for graphs. After a quick google search, it was no surprise that I found a note by Keenan himself who explains how to do it. The set up is a bit janky, but works quite well. On your next software interview, consider using this method rather than BFS.
+"""
 
 # ╔═╡ a9dfc324-03ec-4884-a19e-4371ac069e1b
 md"""
@@ -2270,16 +2844,28 @@ version = "1.4.1+0"
 # ╟─f0eb3973-f9c4-41fc-8f38-3bcb71e76c7d
 # ╟─19696716-d7ae-4ffd-8b73-399e5f02831b
 # ╟─0350b1d6-4245-4b86-8b45-be9c00a16c77
-# ╠═e7080c15-ac7e-4106-8df4-65a668e39b83
+# ╟─e7080c15-ac7e-4106-8df4-65a668e39b83
 # ╟─ac43bbab-3014-4ece-b738-157e6367f734
 # ╟─3a23522e-d7d6-4461-bd33-878e1c823ea6
-# ╠═0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
+# ╟─0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
 # ╟─7564b349-5d51-44a0-b78a-654cd1bbfb61
+# ╟─09631a50-c2fc-4874-aa10-937bc9f5a092
+# ╟─96fdedc9-3adf-4e46-9a50-d0b38bd38caf
+# ╠═c89ce545-5229-418e-a174-e2e4eddc1115
+# ╟─2dad5bf2-ac9c-4767-ac37-3abd252f338a
+# ╟─c814f0d2-cbb0-4db9-9499-993d51f42356
+# ╠═2e4e7cf6-0034-4992-9ea0-f212b4111fc1
+# ╠═e1c19aea-d671-4c01-8bcf-119e7abb295f
+# ╟─54c232ba-1175-40a3-b5a9-729450905e9f
+# ╠═6c50e998-5265-11ee-26eb-0f88bae8e979
+# ╠═7ec2e638-f7af-410e-8b09-7f1f4e40825b
 # ╠═22ff8df4-2902-4ebc-ab43-6a14f38113c6
 # ╠═aec2c069-00a1-405f-b3d6-f1db253222fd
-# ╠═96fdedc9-3adf-4e46-9a50-d0b38bd38caf
-# ╠═54c232ba-1175-40a3-b5a9-729450905e9f
-# ╠═6c50e998-5265-11ee-26eb-0f88bae8e979
+# ╠═635c6007-f158-45da-9019-15d3146e0b50
+# ╟─1978ada5-5a05-4254-8e0b-33717bed0aa3
+# ╟─28a8d2df-d794-4cbf-8641-2324b8d172e4
+# ╠═cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
+# ╟─2a5ae2f3-f9a0-4ade-9307-f617a41e36ce
 # ╠═a9dfc324-03ec-4884-a19e-4371ac069e1b
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
