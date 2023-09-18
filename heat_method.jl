@@ -18,7 +18,7 @@ end
 using PlutoUI
 
 # ╔═╡ 358c1832-06c0-4918-b766-8c1de98c21d3
-using DifferentialEquations, Plots
+using DifferentialEquations, Plots, Eikonal
 
 # ╔═╡ efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
 PlutoUI.TableOfContents(depth=5)
@@ -40,42 +40,7 @@ Take a look below at several surfaces where you can imagine a small ant walking 
 
 # ╔═╡ ad43bc4b-3cc4-4960-bb46-eb6978620e61
 let
-f = Figure(resolution = (1000, 800))
-ax_flat = Axis(f[1,1], aspect=1.0)
-n = 100
-x = range(-1, 1, n)
-y = range(-1, 1, n)
-lines!(ax_flat, x,y, color=:red, linewidth=10)
-heatmap!(ax_flat, x'.+y)
-Label(f[1,1,Bottom()], "Flat plane", valign=:bottom, padding=(0,0,1,0), fontsize=40)
-
-
-hidespines!(ax_flat)
-hidedecorations!(ax_flat)
-
-ax_sphere = Axis3(f[1,2], aspect=:data)
-n = 50
-θ = [0;(0.5:n-0.5)/n;1]
-φ = [(0:2n-2)*2/(2n-1);2]
-x = [cospi(φ)*sinpi(θ) for θ in θ, φ in φ]
-y = [sinpi(φ)*sinpi(θ) for θ in θ, φ in φ]
-z = [cospi(θ) for θ in θ, φ in φ]
-surface!(ax_sphere, x, y, z)
-
-n = 100
-θ = range(-1, -0.5, n)
-x = cospi.(θ)
-y = sinpi.(θ)
-z = zeros(size(x))
-lines!(ax_sphere, x,y,z, color=:red, linewidth=10)
-scatter!(ax_sphere, [x[1], x[end]], 
-	[y[1], y[end]], 
-	[z[1], z[end]], color=:red, markersize=20)
-ax_sphere.viewmode = :fit
-Label(f[1,2,Bottom()], "Sphere", valign=:bottom, fontsize=40)
-hidespines!(ax_sphere)
-# hidedecorations!(ax_sphere)
-f
+# Sphere and bunny?
 end
 
 # ╔═╡ c235d925-3899-4cf7-9d9d-847ab81a7523
@@ -177,14 +142,18 @@ let
 	plot!(c2, color=:white)
 	scatter!([0.6], [0.1], markersize=5, markerstrokewidth=0,colormap=:red)
 	scatter!([-0.7], [-0.4], markersize=5, markerstrokewidth=0, colormap=:red)
-	annotate!(0,-1.05,"What is a good discretization?",annotationfontsize=9)
 end
+
+# ╔═╡ c8fc76f7-f900-460b-a6e3-a33a3386a8e0
+Markdown.MD(Markdown.Admonition("warning", "Question", [md"""
+Is there good discretization for this surface? Even if one could be found, would it work well with shortest path algorithms
+"""]))
 
 # ╔═╡ 19696716-d7ae-4ffd-8b73-399e5f02831b
 md"""
 # Intuition by Leveraging Heat
 
-How do we use heat to produce a notion of distance? Let's continue with the running example of a metal square surface that is initially $0^{\circ}$F everywhere. Now let us take a red-hot needle and touch the center of the plate. At $t=0$ only the center of the plate is hot - say $100^\circ$ F. After a while, the heat flows away from the concentrated center to the boundaries, and this process is governed according to a diffusion equation known as the [heat equation](https://en.wikipedia.org/wiki/Heat_equation) [^2]. Time elapsed means that more of the plate becomes warmer while the center slowly cools down.
+How do we use heat to produce a notion of distance? For now we will simplify the picture by working on square grids and later Let's continue with the running example of a metal square surface that is initially $0^{\circ}$F everywhere. Now let us take a red-hot needle and touch the center of the plate. At $t=0$ only the center of the plate is hot - say $100^\circ$ F. After a while, the heat flows away from the concentrated center to the boundaries, and this process is governed according to a diffusion equation known as the [heat equation](https://en.wikipedia.org/wiki/Heat_equation) [^2]. Time elapsed means that more of the plate becomes warmer while the center slowly cools down.
 """
 
 # ╔═╡ 0350b1d6-4245-4b86-8b45-be9c00a16c77
@@ -253,6 +222,21 @@ The Eikonal equation is a PDE used to describe shortest paths from a source poin
 
 # ╔═╡ dd03796a-0520-418a-88f3-f11547b05a19
 let
+	tsize = 1000
+	solver = FastMarching(tsize, tsize)
+	solver.v .= 1;
+	
+	npoints = 4
+	for _ in 1:npoints
+	    (i, j) = rand(1:tsize, 2)
+	    init!(solver, (i, j))
+	end
+	
+	march!(solver)
+	
+	contour(1:(tsize+1), 1:(tsize+1), solver.t, levels=30,
+	        aspect_ratio=1, c=:coolwarm, size=(300, 300), ticks=false, framestyle=:box,
+	        title = "W", xlims=(1,(tsize+1)), ylims=(1,(tsize+1)))
 end
 
 # ╔═╡ 217ac117-5415-4938-a543-8ebe5cca7898
@@ -267,37 +251,95 @@ So how does the analogy connect with the constraint $\vert \nabla u(x)\vert = 1$
 So instead of evaluating Varadhan's formula, we evaluate the Eikonal equation and problem solved? Sorry to dissappoint again, but unfortunately the Eikonal equation is a bit too difficult to solve accurately, even by simulation. This isn't to say that people don't try to solve it, they do and have succeeded in getting good estimates. Fast marching is a whole class of approximation algorithms that takes the wave front analogy to the extreme. The problem is that many of these algorithms need to approximate the wave front which can be some what fickly. There are exact solvers, but even these incur large runtime costs, almost on the order of $O(n^3)$. Once again, the paper takes another turn to save the day.
 """
 
-# ╔═╡ 7ec2e638-f7af-410e-8b09-7f1f4e40825b
+# ╔═╡ c912af64-147f-4ca5-a567-45f5c5e50303
+
 md"""
 # The Heat Method
 
-The Heat Method repurposes the Eikonal equation, but instead of explicitly solving it it makes use of three stages: simulating heat, computing the gradient, and solving a Poisson equation. 
+Instead of solving the Eikonal equation directly, the Heat Method repurposes heat diffusion to solve it in three stages: simulating heat, computing gradients, and solving a Poisson equation. It makes use of the following observation on the solution to the heat equation.
 """
 
-# ╔═╡ 6c50e998-5265-11ee-26eb-0f88bae8e979
-begin
 
-	function laplacian(du,u,p,t)
-	    alpha, dx = p
-	    N,_ = size(du)
-	    limit(a) = (a == 0) ? 1 : (a == N+1 ? N : a)
-	    for I in CartesianIndices(du)
-	        x = I[1]
-	        y = I[2]
-	        dx1, dx2, dy1, dy2 = limit(x-1), limit(x+1), limit(y-1), limit(y+1)
-	        du[I] = alpha * (u[dx1, y] + u[dx2,y] + u[x,dy1] + u[x,dy2] - 4*u[I]) / 		dx^2
-	    end
-	end
-	
-	function init_heat_map(dxy)
-	    N = length(dxy)
-	    u = zeros(N,N)
-	    mid = ceil(Int, N/2)
-	    u[mid,mid] =1.0
-	    u
-	end
+# ╔═╡ 3e920b70-d5b6-44f4-b257-e7568a458173
+Markdown.MD(Markdown.Admonition("info", "Observation #3", [md"""
+Let $h(x)$ be the heat kernel for source $s$ and small time $t$. Then $h(x)$ decreases approximately in the same directions as the distance function $u(x)$.
+"""]))
+
+# ╔═╡ d7ccc528-a811-4c31-8d64-fa2ce1e813cb
+let
+	# Picture of two vector fields. One for heat, one for eikonal.
 end
 
+# ╔═╡ e56e6e62-5f38-467d-83bd-daaf4a968044
+md"""
+Observation #3 says that $\nabla h(y)$ is roughly parallel to $\nabla u(x)$. But since $\vert\nabla u(x)\vert =1$, normalizing the vector field $\nabla h(x)$ gives a good estimate for $\nabla u(x)$. Although we have $\nabla u(x)$ instead of $u(x)$, this is a good first step so let's write out.
+"""
+
+# ╔═╡ 47e4da81-2c79-44bc-8d87-a9a0f2e45d4e
+md"""
+### Simulating Heat
+
+On a flat surface, the heat flows according to the PDE [^5]
+
+$$\Delta x = x_t$$
+
+The operator $\Delta$ is the *Laplacian* and it usually takes the form $\Delta=\frac{\partial}{\partial x^2}+\frac{\partial}{\partial y^2}$ for $2$D surfaces. In the continuous setting, it is straightforward to compute the Laplacian of a function. In our setting, however, functions defined on the discretized structures (e.g. the grid or meshes) are not inherently continuous and instead are defined on a finite number of points. For example, the square grid defines functions on each of the $N\times N$ lattice points and can be represented as a $\mathbb{R}^{N\times N}$ vector. More generally discrete functions are $\mathbb{R}^{\vert V\vert}$ vectors where $\vert V \vert$ is the number of evaluable points. To adapt $\Delta$ for discrete functions, observe that $\Delta$ is a linear operator that maps scalar functions to new scalar functions. This means that finite version of $\Delta$ is simply a matrix mapping $\mathbb{R}^{\vert V\vert}$ to $\mathbb{R}^{\vert V\vert}$. Call this proposed matrix $L$.
+
+Now defining the entries of $L$ is a whole ordeal on its own because it greatly depends on discretization and the domain (e.g. meshes, graphs, point clouds etc). Naturally, discretizing $\Delta$ means that $L$ loses some of the deseriable properties of $\Delta$. Lots of effort has been put in finding good and robust Laplacians for different domains, but luckily for us the square grid has a fairly simple $L$ that is intuitive and works great.
+"""
+
+# ╔═╡ 47b00e38-83d1-4888-baee-662bd716827c
+md"""
+##### Laplacian for a Grid
+
+Recall that the square grid defines discrete functions for $N\times N$ points. Let $f\in \mathbb{R}^{N\times N}$ be one such function. The goal is to approxmimate 
+$$\Delta=\frac{\partial }{\partial x^2}+\frac{\partial}{\partial y^2}$$, so we first discretize $$\frac{\partial}{\partial x^2}$$. Intuitively, the second derivative at a lattice point will depend both neighbors on the $x$ axis. Expanding out the Taylor series confirms this:
+
+$\begin{align}
+f(a+dx,b)&=f(a,b) + \frac{\partial}{\partial x}f(x,y)dx+\frac{1}{2}\frac{\partial}{\partial x^2}(dx)^2+o((dx)^2)\\
+f(a-dx, b) &= f(a,b) - \frac{\partial}{\partial x} f(x,y) dx + \frac{1}{2}\frac{\partial}{\partial x^2} (dx)^2 + o((dx)^2)\\
+\end{align}$
+Summing both expressions yields
+
+$\begin{align}
+f(a+dx,b)+f(a-dx,b) = 2f(a,b) + \frac{\partial}{\partial x^2} f(x,y) (dx)^2 + o((dx)^4)
+\end{align}$
+
+or 
+
+$$\frac{\partial}{\partial x^2} f(x,y) \approx\frac{[f(a+dx,b)-f(a,b)] + [f(a-dx,b) - f(a,b)]}{(dx)^2}$$
+
+The same can be said for the derivative with respect to $y$:
+
+$$\frac{\partial}{\partial y^2} f(x,y) \approx\frac{[f(x,b+dy)-f(a,b)] + [f(a,b-dy) - f(a,y)]}{(dy)^2}$$
+
+Combining both derivatives yields our discrete Laplacian. Instead of using real-valued position $(a,b)$ we opt with indices representing the entries of a matrix. $L$ is then defined as
+
+$\begin{align}
+L_{ij} = &\frac{[f(i+1,j)-f(i,j)] + [f(i-1,j) - f(i,j)]}{(dx)^2}\\
+&+\frac{[f(i,j+1)-f(i,j)]+[f(i,j-1)-f(i,j)]}{(dy)^2}\\
+&=\frac{\sum_{k\in N(i,j)}[f(k)-f(i,j)]}{(dx)^2}
+\end{align}$
+
+where the last equality occurs when $dx=dy$. This is usually called the "five-point" Laplacian since it requires a cross shape to evaluate.
+
+For cells on the boundary, boundary conditions resolve ambiguities. There are two common ones, Dirichlet and Neumann. For Dirichlet, values at the boundary are fixed (e.g. $f(s)=c$) where as for Neumann boundary conditions, the partial derivatives are fixed (e.g. $f_x(s) = c$). The paper focuses on both conditions, but we focus on Dirichlet for brevity. Most of the code would be identical otherwise.
+
+First we will define a loop computing this Laplacian.
+"""
+
+# ╔═╡ 557ec9ad-5d1b-43a8-af0f-fd46077b840d
+function laplacian(du,u,p,t)
+	alpha, dx = p
+	N,_ = size(du)
+	limit(a) = (a == 0) ? 1 : (a == N+1 ? N : a)
+	for I in CartesianIndices(du)
+		x = I[1]
+		y = I[2]
+		dx1, dx2, dy1, dy2 = limit(x-1), limit(x+1), limit(y-1), limit(y+1)
+		du[I] = alpha * (u[dx1, y] + u[dx2,y] + u[x,dy1] + u[x,dy2] - 4*u[I]) / 		dx^2
+	end
+end
 
 # ╔═╡ e7080c15-ac7e-4106-8df4-65a668e39b83
 let
@@ -341,436 +383,14 @@ let
 	
 end
 
-# ╔═╡ 71b24653-c6e2-4539-b8cc-082b3d838da7
-md"""
-# Heat Method on Meshes
-
-Up to this point, the examples were only of square plates, but the most interesting problems arise in 3D with meshes and point clouds. Luckily the Heat Method carries over to this regime.
-"""
-
-# ╔═╡ bba54dba-5ba4-4073-894c-c6fecbf3f590
-md"""
-### Discretizing ∇, ∇⋅, and Δ
-"""
-
-# ╔═╡ 1978ada5-5a05-4254-8e0b-33717bed0aa3
-md"""
-Discretizing  
-∇
-∇, 
-∇
-⋅
-∇⋅ and 
-Δ
-Δ
-
-The previous discussion helped us formulate the plan of attack, but now our setting is in the real world with discrete meshes - little is continuous and we have to make hard decisions on how to discretize the computation. There is no right way to go about this since trade offs exist as all things typical in geometry processing and PDE simulation. The choice of discretization can depend on several factors such as how the mesh is discretized and whether the mesh satisfies manifold assumptions or not. For now, I refer you to some lecture notes on Laplacians and Vector Fields. Now the paper highlights some possible discretization for the operators, and I will discuss the most common choice.
-
-Cotangent Laplacian
-Warning 2 (consider putting this in a box?) By far the most popular discretization for the Laplace-Beltrami operator is the cotanget Laplacian. You will see this choice in virtually most geometry processing papers as their first choice. The operator is defined as a (typically sparse) 
-∣
-�
-∣
-×
-∣
-�
-∣
-∣V∣×∣V∣ matrix, acting on a 
-�
-∣
-�
-∣
-R 
-∣V∣
-  vectors.
-
-�
-�
-�
-=
-L 
-ij
-​
- =
-This is actually the unweighted version. The weighted version incorporates the vertex-based areas to weight the entries of 
-�
-L. Vertices that amass a larger area need to be weighted down whereas vertices that cover little area are upweighted. Concretely, we define a matrix 
-�
-=
-diag
-(
-�
-)
-A=diag(a) where 
-�
-∈
-�
-∣
-�
-∣
-a∈R 
-∣V∣
-  are the vertex-based areas. The true cotangent Laplacian is then 
-�
-−
-1
-�
-A 
-−1
- L.
-
-footnote - Wait vertex area? How does a vertex have an area? Here you can consider the barycentric area - the sum of the areas of the faces adjacent to the vertex divided by 
-3
-3. Again refer to https://graphics.pixar.com/library/VectorFieldCourse/paper.pdf
-
-Div and Grad
-It turns out that if we want to use the cotangent Laplacian for our choice of 
-Δ
-Δ, then we need to be careful when defining 
-∇
-∇ and 
-∇
-⋅
-∇⋅. These operators need to satisfy the relationship 
-∇
-⋅
-(
-∇
-�
-)
-=
-Δ
-�
-∇⋅(∇u)=Δu (show yourself why it is true for Euclidean case).
-
-Here we define a face-based gradient operator which takes a scalar field 
-�
-∣
-�
-∣
-R 
-∣
- V∣ and produces vectors for each face of the mesh. The vectors lie in the plane of the faces by design. For every triangle, the gradient is
-
-(
-∇
-�
-)
-�
-=
-1
-2
-�
-�
-∑
-�
-=
-1
-3
-�
-�
-(
-N
-×
-e
-�
-)
-(∇u) 
-f
-​
- = 
-2A 
-f
-​
- 
-1
-​
-  
-j=1
-∑
-3
-​
- u 
-j
-​
- (N×e 
-j
-​
- )
-I'm slightly abusing the notation - the sum is over the three vertices of the triangle. 
-�
-�
-u 
-j
-​
-  are the scalar values of the vertices and 
-e
-�
-e 
-j
-​
-  is the edge opposite to the vertex. See the Figure below.
-
-Explain what the definition of gradient is.
-
-With 
-∇
-∇ defined, the correspondencing choice of 
-∇
-⋅
-∇⋅ should satisfy the relationship. The paper defines it as
-
-(
-∇
-⋅
-�
-)
-�
-=
-1
-2
-∑
-�
-cot
-⁡
-�
-1
-(
-�
-2
-⋅
-�
-�
-)
-+
-cot
-⁡
-�
-2
-(
-�
-1
-⋅
-�
-�
-)
-(∇⋅X) 
-v
-​
- = 
-2
-1
-​
-  
-j
-∑
-​
- cotθ 
-1
-​
- (e 
-2
-​
- ⋅X 
-j
-​
- )+cotθ 
-2
-​
- (e 
-1
-​
- ⋅X 
-j
-​
- )
-where 
-�
-X is the vector field and 
-�
-j is a sum over all the adjacent triangles to a vertex 
-�
-v. The angles 
-�
-1
-θ 
-1
-​
-  and 
-�
-2
-θ 
-2
-​
-  are the angles opposite of vertex 
-�
-v on the triangle. The edges 
-�
-1
-e 
-1
-​
-  and 
-�
-2
-e 
-2
-​
-  eminate from 
-�
-v and end at the opposite vertices. Take note of the ordering and see Figure .
-"""
-
-# ╔═╡ 611b3854-ba93-46d1-b270-4c6ddeea6585
-md"""
-### Handwriting DiffEq.jl
-
-There are two common ways to solve the heat equation if given the operator $L$. The first one is an iterative approach that uses the entries of $L$ to update the solution like how computing with a stencil works. The second method solves the equation in a manner similar to what a person would do to solve a PDE like the heat equation by hand - by finding the eigenfunctions.
-"""
-
-# ╔═╡ b23e2924-a4ee-429e-b470-ceafa0dffc88
-md"""
-##### Iterative Mode
-Back in calculus, we used Euler's method to solve the solutions to a differential equation. The finer the resolution of the update - in our case time 
-�
-t, the more accurate our solutions were. Let 
-ℎ
-�
-(
-�
-)
-h 
-t
-​
- (x) be the heat on the mesh at time 
-�
-t. We linearize the time dimension which yields roughly
-
-−
-�
-−
-1
-�
-ℎ
-�
-≈
-ℎ
-�
-′
-−
-ℎ
-�
-�
-�
-−A 
-−1
- Lh 
-t
-​
- ≈ 
-dt
-h 
-t 
-′
- 
-​
- −h 
-t
-​
- 
-​
- 
-or
-
-ℎ
-�
-′
-=
-ℎ
-�
-−
-�
-�
-⋅
-�
-−
-1
-�
-ℎ
-�
-h 
-t 
-′
- 
-​
- =h 
-t
-​
- −dt⋅A 
-−1
- Lh 
-t
-​
- 
-Equation (...) is referred to as foward-mode integration since we take the previously known value and use the derivative to update it. This works and is generally fast, but I want to point out a slight variant that happens to be more stable. It turns out that if we replace 
-�
-ℎ
-�
-Lh 
-t
-​
-  and 
-�
-ℎ
-�
-′
-Lh 
-t 
-′
- 
-​
-  as our choice of the derivative, then this is referred to as semi-implicit integration. The update rule then becomes
-
-�
-ℎ
-�
-′
-=
-(
-�
-+
-�
-�
-⋅
-�
-)
-−
-1
-ℎ
-�
-Ah 
-t 
-′
- 
-​
- =(A+dt⋅L) 
-−1
- h 
-t
-​
-"""
-
-# ╔═╡ 15634a5e-3e52-4076-8f04-d606c0caa828
-md"""
-##### Spectral Mode
-
-https://services.math.duke.edu/~jtwong/math353-2018/lectures/Notes-PDEs1.pdf We are in luck. The theorem states that so long as we find the eigenfunctions satisfying the boundary conditions, then we can solve the heat equation for any initial condition that also satisfies the boundary equations. All there is to do is to decompose the initial heat function into a linear combination. Assume Dirichlet boundary conditions.
-"""
-
-# ╔═╡ 28a8d2df-d794-4cbf-8641-2324b8d172e4
-md"""
-
-"""
+# ╔═╡ a9bd0620-2f80-43e8-b83a-c0102e6a2b4d
+function init_heat_map(dxy)
+	    N = length(dxy)
+	    u = zeros(N,N)
+	    mid = ceil(Int, N/2)
+	    u[mid,mid] =1.0
+	    u
+	end
 
 # ╔═╡ cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
 function heat_kernel(N, x, L)
@@ -808,30 +428,214 @@ let
 
 end
 
-# ╔═╡ 2a5ae2f3-f9a0-4ade-9307-f617a41e36ce
+# ╔═╡ 3faa8490-10f2-47f5-af38-d832401d5487
 md"""
-Extra:
-Shortest paths on graphs
-The heat method can be extended to other domains. Really, so long as you have a way of taking Laplacians, gradients, and divergences then in principle you can repeat all steps and get a heat method for your domain of interest. Graphs are another type of setting with Laplacians. Laplacians defined for graphs are a popular tool in machine learning for normalization so their properties are well established. When I tried implementing this however, I encountered problems in defining a divergence discretization for graphs. After a quick google search, it was no surprise that I found a note by Keenan himself who explains how to do it. The set up is a bit janky, but works quite well. On your next software interview, consider using this method rather than BFS.
+
+To interpret the solutions to this equation, boundary conditions are often employed such as Dirichlet or Neumann on the edges of the square. 
 """
+
+# ╔═╡ 2a77d78c-1b8a-4690-9024-46a6794d8efd
+md"""
+### Computing Gradients
+The next step is to take the gradient of the $h$. Defining the discrete gradient matches   of the partial derivatives to look like. The gradient is described by the partial derivatives for $x$ and $y$
+
+$$\frac{h[x+1]-h[t]}{dx}$$
+Indeed observe that
+h(t)
+"""
+
+# ╔═╡ 7a7a67a7-7958-43bb-bf54-36b80ecdf1de
+let
+	#Vector field
+end
+
+# ╔═╡ 89c89069-16f2-47d1-a36b-ea1101889f17
+md"""
+Generally, the gradient field is a vector field and there are several equivalent ways of representing it for discrete structures. Here, the vector field is defined as a $\mathbb{R}^{\vert V\vert\times 2}$ matrix.
+"""
+
+# ╔═╡ 7c9b744e-72cd-449e-8228-a25b5c845233
+md"""
+### Solving the Poisson Equation
+
+The final step is to transform the estimate of $\nabla u(x)$, $\vec{X}$, to an estimate of $u(x)$. To do so, we appeal to a general definition of the Laplacian using grad ($\nabla$) and div $(\nabla \cdot)$. The Laplacian is defined as
+
+$$\Delta f= \nabla\cdot (\nabla f)$$
+
+or "div grad of f". Verify that this definition is consistent when the Euclidean $\nabla$ and $\nabla \cdot$ are plugged in.
+
+The right hand side of $\vec{X}=\nabla u(x)$ looks somewhat like the right hand side of the Laplacian. So applying $\nabla \cdot$ yields
+
+$$\nabla\cdot \vec{X} = \nabla\cdot(\nabla u(x)) = \Delta u(x)$$
+
+So solving this equation will yield $u(x)$, but is it any easier? In general no, but going back to the discrete setting simplifies this issue. Using our discrete operators so far, this amounts to solving
+
+$$\nabla \cdot X = Lu$$
+
+Notice that $\nabla\cdot X\in \mathbb{R}^{\vert V\vert}$, so as soon as we find a way to compute the "discrete div", the only thing left to do is to solve for $u$ as a system of linear equations!
+"""
+
+# ╔═╡ 71b24653-c6e2-4539-b8cc-082b3d838da7
+md"""
+# Heat Method on Meshes
+
+Up to this point, the examples were only of square plates, but the most interesting problems arise in 3D with meshes and point clouds. Luckily the Heat Method carries over to this regime. One thing we need to look out for is how how to do analogous calculations as those done one the square plate. For this, we need to propose discretizations for the operators.
+"""
+
+# ╔═╡ e48d51a3-debc-4339-84fe-20ee9613e808
+let
+	# Feature some meshes
+end
+
+# ╔═╡ 9a0aa371-9fbf-493f-ba4e-cb0801c2d5ef
+md"""
+### Discretizing ∇, ∇⋅, and Δ
+"""
+
+# ╔═╡ 861049ba-49d9-4f8c-a186-f1f95b282904
+md"""
+
+##### Laplace-Beltrami
+The first order of business is to discretize the Laplacian $\Delta$ for meshes. You might recall that the Laplacian in $\mathbb{R}^3$ is defined as 
+
+$$\Delta=\frac{\partial}{\partial x^2}+\frac{\partial}{\partial y^2}+\frac{\partial}{\partial z^2}$$
+
+The problem is that this assumes that heat flows in a volume rather than a surface. To illustrate the difference, we plotted a sphere and a ball. The sphere is hollow and so the heat can only flow on its surface where as the ball conducts heat internally. 
+"""
+
+# ╔═╡ 83f7c9c7-cf37-44f0-8e51-ea6596d83605
+let
+	#simulation
+end
+
+# ╔═╡ 688712c4-b57f-49de-a1e9-3a3299eef60e
+md"""
+If the volumetric definition is used, then the heat values measured would correspond to geodesics that run *internal* to the mesh. Thus we need to use a different formulation of the Laplacian that handles surfaces of meshes well. For this, we introduce the [Laplace-Beltrami](https://en.wikipedia.org/wiki/Laplace–Beltrami_operator) operator. 
+
+The Laplace-Beltrami (referred also as the Laplacian for short) operator is the 2D analog for surfaces embedded $\mathbb{R}^3$. Why is that? When considering meshes, they are often assumed to be manifolds, meaning that at any given point, the surface looks locally like a flat plane. So at a local scale, heat diffusion looks approximately the same as if we were simulating a flat surface. The generalization is defined as
+
+$$\Delta f = \nabla\cdot(\nabla f)$$
+
+or "div grad of $f$". Verify that this definition agrees with the Euclidean Laplacian.
+
+How would the discrete analog look for a mesh? A mesh consists of vertices and faces, and a function can be defined over its vertices or faces. Here, a heat function $u(v)$ is defined over the vertices $v\in \mathcal{M}$ which can be represented compactly as a $\mathbb{R}^{\vert V\vert}$ vector. So the Laplacian must take in a scalar field $f(v)\in \mathbb{R}^{\vert V\vert}$ and produce a new scalar field over the vertices. This implies that the shape of $\Delta$ is represented as a matrix, more precisely a $|V|\times |V|$ matrix. Like [convolution filters](https://en.wikipedia.org/wiki/Kernel_(image_processing)#Details), there are many proposed Laplacian matrices that seek to approximate the continuous Laplace-Beltrami operator. It turns out that no discrete Laplacian is able to satisfy all of the properties of the continuous one, so each matrix has its own pitfalls. Here we use a common one called the **cotangent Laplacian**.
+
+"""
+
+# ╔═╡ 92b945aa-b19f-4732-963b-a3e8b42a6b02
+Markdown.MD(Markdown.Admonition("info", "Note", [md"""
+By far the most popular discretization for the Laplace-Beltrami operator is the cotangent Laplacian. You will see this choice in virtually most geometry processing papers as their first choice. It's main weakness is it is not robust even for rigid transformations and is sensitive to mesh changes. Moreover, there is not guarantee that the entries are all positive.
+"""]))
+
+# ╔═╡ d5b9c28b-e9fc-4e04-bf05-5b0b93da804e
+md"""
+The cotangent Laplacian, $L$, is defined as
+
+$L_{ij}=\begin{cases}
+w_{ij} & \text{if }i\neq j\\
+-\sum\limits_{k\neq i} w_{ik} & \text{if }i=j
+\end{cases}$
+where $w_{ij}=\cot \alpha_i + \cot \alpha_j$. The figure below defines $\alpha_i$ and $\alpha_j$ for a pair of opposing vertices.
+"""
+
+# ╔═╡ 2c01678b-2501-4cb1-b1ba-9e6533a8a364
+# Figure
+
+# ╔═╡ 5bcf708c-8dc2-4a2d-a284-c17db2ea8b9a
+md"""
+This is actually referred to as the *unweighted* version. The weighted version incorporates the vertex-based areas to weight the entries of $L$ [^6]. Vertices that amass a larger area need to be weighted down whereas vertices that cover little area are upweighted. Concretely, we define a mass matrix $A=\text{diag}(a)$ where $a\in\mathbb{R}^{\vert V\vert}$ are the vertex-based areas. The true cotangent Laplacian is then $A^{−1}L$.
+"""
+
+# ╔═╡ 9dd097b6-5f82-4fbe-b0d1-86756b7747d2
+function cotlaplacian(V,F)
+end
+
+# ╔═╡ 3ed68b8f-db59-40fe-87ef-8df03f81f9df
+md"""
+##### Div and Grad
+With the Laplacian defined, we now turn to finding manifold analogs of $\nabla$ and $\nabla\cdot$ while keeping faithful to Equation ?. It turns out that if we want to use the cotangent Laplacian for our choice of $\Delta$, then we need to be careful when defining $\nabla$ and $\nabla\cdot$. These operators need to satisfy the relationship $\nabla\cdot (\nabla u) = \Delta u$ (show yourself why it is true for Euclidean case).
+
+Here we define a face-based gradient operator which takes a scalar field $\mathbb{R}^|V|$ and produces vectors for each face of the mesh. The vectors lie in the plane of the faces by design. For every triangle, the gradient is
+$$(\nabla u)_f = \frac{1}{2A_f}\sum\limits_{j=1}^3 u_j (\textbf{N} \times \textbf{e}_j)$$
+I'm slightly abusing the notation - the sum is over the three vertices of the triangle. $u_j$ are the scalar values of the vertices and $\textbf{e}_j$ is the edge opposite to the vertex. See the Figure below.
+
+Explain what the definition of gradient is.
+
+With $\nabla$ defined, the correspondencing choice of $\nabla\cdot$ should satisfy the relationship. The paper defines it as
+$$(\nabla\cdot X)_v = \frac{1}{2}\sum\limits_{j} \cot\theta_1(e_2\cdot X_j) + \cot \theta_2(e_1\cdot X_j)$$
+where $X$ is the vector field and $j$ is a sum over all the adjacent triangles to a vertex $v$. The angles $\theta_1$ and $\theta_2$ are the angles opposite of vertex $v$ on the triangle. The edges $e_1$ and $e_2$ eminate from $v$ and end at the opposite vertices. Take note of the ordering and see Figure .
+"""
+
+# ╔═╡ 1e1b6bed-9224-4968-afb6-6bbc9d635191
+md"""
+### Examples
+Now for some examples.
+"""
+
+# ╔═╡ d11eade6-9a90-419f-b78c-0bb2d9f2d93d
+
+
+# ╔═╡ 611b3854-ba93-46d1-b270-4c6ddeea6585
+md"""
+# Asides
+### Handwriting DiffEq.jl
+
+There are two common ways to solve the heat equation if given the operator $L$. The first one is an iterative approach that uses the entries of $L$ to update the solution like how computing with a stencil works. The second method solves the equation in a manner similar to what a person would do to solve a PDE like the heat equation by hand - by finding the eigenfunctions.
+"""
+
+# ╔═╡ 070107d5-40e4-4f63-bdb9-9f315ebf18ba
+md"""
+#### Iterative Mode
+Back in calculus, we used Euler's method to solve the solutions to a differential equation. The finer the resolution of the update - in our case time $t$, the more accurate our solutions were. Let $h_t(x)$ be the heat on the mesh at time $t$. We linearize the time dimension which yields roughly
+
+$$-A^{-1}Lh_t \approx \frac{h_{t'}-h_t}{dt}$$
+or
+
+$$h_{t'} = h_t-dt\cdot A^{-1}Lh_t$$
+
+Equation (...) is referred to as foward-mode integration since we take the previously known value and use the derivative to update it. This works and is generally fast, but I want to point out a slight variant that happens to be more stable. It turns out that if we replace $Lh_t$ and $Lh_{t'}$ as our choice of the derivative, then this is referred to as semi-implicit integration. The update rule then becomes
+$$Ah_{t'} = (A+dt\cdot L)^{-1}h_t$$
+"""
+
+# ╔═╡ 948cee7b-2533-4693-a333-88231054ff83
+md"""
+#### Spectral Mode
+Spectral mode uses the eigenfunctions of the Laplacian by exploiting linearity.
+"""
+
+# ╔═╡ 54f1f6fe-acc1-4308-b5f9-1694de5dab7f
+md"""
+### GPU Support
+???
+"""
+
+# ╔═╡ 2a5ae2f3-f9a0-4ade-9307-f617a41e36ce
+Markdown.MD(Markdown.Admonition("", "Extra: Shortest Paths on Graphs", [md"""
+We can come full circle and apply ask the question can "we apply heat on a graph to compute the shortest path?". Really, so long as you have a way of taking Laplacians, gradients, and divergences then in principle you can repeat all steps and get a heat method for your domain of interest. Graphs are another type of setting with Laplacians. Laplacians defined for graphs are a popular tool in machine learning for normalization so their properties are well established. When I tried implementing this however, I encountered problems in defining a divergence discretization for graphs. After a quick google search, it was no surprise that I found a note by Keenan himself who explains how to do it. The set up is a bit janky, but works quite well. On your next software interview, consider using this method rather than BFS.
+"""]))
+
 
 # ╔═╡ a9dfc324-03ec-4884-a19e-4371ac069e1b
 md"""
 [^1]: Paper: https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/paperCACM.pdf
 [^2]: We will address how to simulate heat in a later section.
-[^3]: These plots were generated using the Fast Marching Method, another algorithm to approximate geodesics. The down side of the Fast Marching Method - and one of the original motiviations for the Heat Method - is that is is slow. Check out [Eikonal.jl](https://github.com/triscale-innov/Eikonal.jl) for an implementation.
-[^4]: A friend of mine considers this to be the most based PDE of all PDEs. 
+[^3]: These plots were generated using the Fast Marching Method, another algorithm to approximate geodesics. The down side of the Fast Marching Method - and one of the original motiviations for the Heat Method - is that is is slow and not parallelizable. Code credit for the plots goes to [ffevotte](https://github.com/ffevotte). Check out [Eikonal.jl](https://github.com/triscale-innov/Eikonal.jl) for other nifty applications. 
+[^4]: A friend of mine considers this to be the most based PDE of all PDEs.
+[^5]: Thermal diffusivity is assumed to be $1$. For an introduction on the heat equation, check [https://web.stanford.edu/class/math220b/handouts/heateqn.pdf](https://web.stanford.edu/class/math220b/handouts/heateqn.pdf).
+[^6]: Wait vertex area? How does a vertex have an area? Here you can consider the barycentric area - the sum of the areas of the faces adjacent to the vertex divided by $3$.
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+Eikonal = "a6aab1ba-8f88-4217-b671-4d0788596809"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 
 [compat]
 DifferentialEquations = "~7.9.1"
+Eikonal = "~0.1.1"
 Plots = "~1.39.0"
 PlutoUI = "~0.7.52"
 """
@@ -842,12 +646,23 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.0-beta2"
 manifest_format = "2.0"
-project_hash = "0b54549dd9b54f22d0c5673db0880442da495b8d"
+project_hash = "d399a776a766ef7b79fd5a71c9aca6e43c1002fa"
 
 [[deps.ADTypes]]
-git-tree-sha1 = "f2b16fe1a3491b295105cae080c2a5f77a842718"
+git-tree-sha1 = "5d2e21d7b0d8c22f67483ef95ebdc39c0e6b6003"
 uuid = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
-version = "0.2.3"
+version = "0.2.4"
+
+[[deps.AbstractFFTs]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "d92ad398961a3ed262d8bf04a1a2b8340f915fef"
+uuid = "621f4979-c628-5d54-868e-fcf4e3e8185c"
+version = "1.5.0"
+weakdeps = ["ChainRulesCore", "Test"]
+
+    [deps.AbstractFFTs.extensions]
+    AbstractFFTsChainRulesCoreExt = "ChainRulesCore"
+    AbstractFFTsTestExt = "Test"
 
 [[deps.AbstractPlutoDingetjes]]
 deps = ["Pkg"]
@@ -916,6 +731,18 @@ weakdeps = ["SparseArrays"]
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 
+[[deps.AxisAlgorithms]]
+deps = ["LinearAlgebra", "Random", "SparseArrays", "WoodburyMatrices"]
+git-tree-sha1 = "66771c8d21c8ff5e3a93379480a2307ac36863f7"
+uuid = "13072b0f-2c55-5437-9ae7-d433b7a33950"
+version = "1.0.1"
+
+[[deps.AxisArrays]]
+deps = ["Dates", "IntervalSets", "IterTools", "RangeArrays"]
+git-tree-sha1 = "16351be62963a67ac4083f748fdb3cca58bfd52f"
+uuid = "39de3d68-74b9-583c-8d2d-e117c070f3a9"
+version = "0.4.7"
+
 [[deps.BandedMatrices]]
 deps = ["ArrayLayouts", "FillArrays", "LinearAlgebra", "PrecompileTools"]
 git-tree-sha1 = "0b816941273b5b162be122a6c94d706e3b3125ca"
@@ -959,9 +786,9 @@ version = "0.4.2"
 
 [[deps.CPUSummary]]
 deps = ["CpuId", "IfElse", "PrecompileTools", "Static"]
-git-tree-sha1 = "89e0654ed8c7aebad6d5ad235d6242c2d737a928"
+git-tree-sha1 = "601f7e7b3d36f18790e2caf83a882d88e9b71ff1"
 uuid = "2a0fbf3d-bb9c-48f3-b0a9-814d99fd7ab9"
-version = "0.2.3"
+version = "0.2.4"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -975,6 +802,12 @@ git-tree-sha1 = "f641eb0a4f00c343bbc32346e1217b86f3ce9dad"
 uuid = "49dc2e85-a5d0-5ad3-a950-438e2897f1b9"
 version = "0.5.1"
 
+[[deps.CatIndices]]
+deps = ["CustomUnitRanges", "OffsetArrays"]
+git-tree-sha1 = "a0f80a09780eed9b1d106a1bf62041c2efc995bc"
+uuid = "aafaddc9-749c-510e-ac4f-586e18779b91"
+version = "0.2.2"
+
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra", "SparseArrays"]
 git-tree-sha1 = "e30f2f4e20f7f186dc36529910beaedc60cfa644"
@@ -986,6 +819,12 @@ deps = ["Static", "StaticArrayInterface"]
 git-tree-sha1 = "70232f82ffaab9dc52585e0dd043b5e0c6b714f1"
 uuid = "fb6a15b2-703c-40df-9091-08a04967cfa9"
 version = "0.1.12"
+
+[[deps.Clustering]]
+deps = ["Distances", "LinearAlgebra", "NearestNeighbors", "Printf", "Random", "SparseArrays", "Statistics", "StatsBase"]
+git-tree-sha1 = "b86ac2c5543660d238957dbde5ac04520ae977a7"
+uuid = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
+version = "0.15.4"
 
 [[deps.CodecZlib]]
 deps = ["TranscodingStreams", "Zlib_jll"]
@@ -1047,6 +886,11 @@ deps = ["Artifacts", "Libdl"]
 uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
 version = "1.0.5+1"
 
+[[deps.ComputationalResources]]
+git-tree-sha1 = "52cb3ec90e8a8bea0e62e275ba577ad0f74821f7"
+uuid = "ed09eef8-17a6-5b46-8889-db040fac31e3"
+version = "0.3.2"
+
 [[deps.ConcurrentUtilities]]
 deps = ["Serialization", "Sockets"]
 git-tree-sha1 = "5372dbbf8f0bdb8c700db5367132925c0771ef7e"
@@ -1058,25 +902,33 @@ deps = ["LinearAlgebra"]
 git-tree-sha1 = "c53fc348ca4d40d7b371e71fd52251839080cbc9"
 uuid = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
 version = "1.5.4"
+weakdeps = ["IntervalSets", "StaticArrays"]
 
     [deps.ConstructionBase.extensions]
     ConstructionBaseIntervalSetsExt = "IntervalSets"
     ConstructionBaseStaticArraysExt = "StaticArrays"
-
-    [deps.ConstructionBase.weakdeps]
-    IntervalSets = "8197267c-284f-5f27-9208-e0e47529a953"
-    StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [[deps.Contour]]
 git-tree-sha1 = "d05d9e7b7aedff4e5b51a029dced05cfb6125781"
 uuid = "d38c429a-6771-53c6-b99e-75d170b6e991"
 version = "0.6.2"
 
+[[deps.CoordinateTransformations]]
+deps = ["LinearAlgebra", "StaticArrays"]
+git-tree-sha1 = "f9d7112bfff8a19a3a4ea4e03a8e6a91fe8456bf"
+uuid = "150eb455-5306-5404-9cee-2592286d6298"
+version = "0.6.3"
+
 [[deps.CpuId]]
 deps = ["Markdown"]
 git-tree-sha1 = "fcbb72b032692610bfbdb15018ac16a36cf2e406"
 uuid = "adafc99b-e345-5852-983c-f28acb93d879"
 version = "0.3.1"
+
+[[deps.CustomUnitRanges]]
+git-tree-sha1 = "1a3f97f907e6dd8983b744d2642651bb162a3f7a"
+uuid = "dc8bdbbb-1ca9-579f-8c36-e416f6a65cce"
+version = "1.0.2"
 
 [[deps.DataAPI]]
 git-tree-sha1 = "8da84edb865b0b5b0100c0666a9bc9a0b71c553c"
@@ -1220,6 +1072,12 @@ git-tree-sha1 = "5837a837389fccf076445fce071c8ddaea35a566"
 uuid = "fa6b7ba4-c1ee-5f82-b5fc-ecf0adba8f74"
 version = "0.6.8"
 
+[[deps.Eikonal]]
+deps = ["DataStructures", "Images", "LinearAlgebra", "PrecompileTools", "Printf"]
+git-tree-sha1 = "ac89a6cf8c89a741448deb8692aaacba745ecee0"
+uuid = "a6aab1ba-8f88-4217-b671-4d0788596809"
+version = "0.1.1"
+
 [[deps.EnumX]]
 git-tree-sha1 = "bdb1942cd4c45e3c678fd11569d5cccd80976237"
 uuid = "4e289a0a-7415-4d19-859d-a7e5c4648b56"
@@ -1260,6 +1118,24 @@ git-tree-sha1 = "74faea50c1d007c85837327f6775bea60b5492dd"
 uuid = "b22a6f82-2f65-5046-a5b2-351ab43fb4e5"
 version = "4.4.2+2"
 
+[[deps.FFTViews]]
+deps = ["CustomUnitRanges", "FFTW"]
+git-tree-sha1 = "cbdf14d1e8c7c8aacbe8b19862e0179fd08321c2"
+uuid = "4f61f5a4-77b1-5117-aa51-3ab5ef4ef0cd"
+version = "0.3.2"
+
+[[deps.FFTW]]
+deps = ["AbstractFFTs", "FFTW_jll", "LinearAlgebra", "MKL_jll", "Preferences", "Reexport"]
+git-tree-sha1 = "b4fbdd20c889804969571cc589900803edda16b7"
+uuid = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+version = "1.7.1"
+
+[[deps.FFTW_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "c6033cc3892d0ef5bb9cd29b7f2f0331ea5184ea"
+uuid = "f5851436-0d7a-5f13-b9de-f02708fd171a"
+version = "3.3.10+0"
+
 [[deps.FastBroadcast]]
 deps = ["ArrayInterface", "LinearAlgebra", "Polyester", "Static", "StaticArrayInterface", "StrideArraysCore"]
 git-tree-sha1 = "aa9925a229d45fe3018715238956766fa21804d1"
@@ -1276,6 +1152,12 @@ deps = ["LinearAlgebra"]
 git-tree-sha1 = "b12f05108e405dadcc2aff0008db7f831374e051"
 uuid = "29a986be-02c6-4525-aec4-84b980013641"
 version = "2.0.0"
+
+[[deps.FileIO]]
+deps = ["Pkg", "Requires", "UUIDs"]
+git-tree-sha1 = "299dc33549f68299137e51e6d49a13b5b1da9673"
+uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+version = "1.16.1"
 
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
@@ -1376,15 +1258,15 @@ version = "0.1.5"
 
 [[deps.GR]]
 deps = ["Artifacts", "Base64", "DelimitedFiles", "Downloads", "GR_jll", "HTTP", "JSON", "Libdl", "LinearAlgebra", "Pkg", "Preferences", "Printf", "Random", "Serialization", "Sockets", "TOML", "Tar", "Test", "UUIDs", "p7zip_jll"]
-git-tree-sha1 = "d73afa4a2bb9de56077242d98cf763074ab9a970"
+git-tree-sha1 = "8e2d86e06ceb4580110d9e716be26658effc5bfd"
 uuid = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
-version = "0.72.9"
+version = "0.72.8"
 
 [[deps.GR_jll]]
-deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "FreeType2_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt6Base_jll", "Zlib_jll", "libpng_jll"]
-git-tree-sha1 = "1596bab77f4f073a14c62424283e7ebff3072eca"
+deps = ["Artifacts", "Bzip2_jll", "Cairo_jll", "FFMPEG_jll", "Fontconfig_jll", "GLFW_jll", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pixman_jll", "Qt5Base_jll", "Zlib_jll", "libpng_jll"]
+git-tree-sha1 = "da121cbdc95b065da07fbb93638367737969693f"
 uuid = "d2c73de3-f751-5644-a686-071e5b155ba9"
-version = "0.72.9+1"
+version = "0.72.8+0"
 
 [[deps.GenericSchur]]
 deps = ["LinearAlgebra", "Printf"]
@@ -1403,6 +1285,12 @@ deps = ["Artifacts", "Gettext_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Libic
 git-tree-sha1 = "e94c92c7bf4819685eb80186d51c43e71d4afa17"
 uuid = "7746bdde-850d-59dc-9ae8-88ece973131d"
 version = "2.76.5+0"
+
+[[deps.Graphics]]
+deps = ["Colors", "LinearAlgebra", "NaNMath"]
+git-tree-sha1 = "d61890399bc535850c4bf08e4e0d3a7ad0f21cbd"
+uuid = "a2bd30eb-e257-5431-a919-1863eab51364"
+version = "1.1.2"
 
 [[deps.Graphite2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1432,6 +1320,12 @@ deps = ["Artifacts", "Cairo_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll",
 git-tree-sha1 = "129acf094d168394e80ee1dc4bc06ec835e510a3"
 uuid = "2e76f6c2-a576-52d4-95c1-20adfe4de566"
 version = "2.8.1+1"
+
+[[deps.HistogramThresholding]]
+deps = ["ImageBase", "LinearAlgebra", "MappedArrays"]
+git-tree-sha1 = "7194dfbb2f8d945abdaf68fa9480a965d6661e69"
+uuid = "2c695a8d-9458-5d45-9878-1b8a99cf7853"
+version = "0.3.1"
 
 [[deps.HostCPUFeatures]]
 deps = ["BitTwiddlingConvenienceFunctions", "IfElse", "Libdl", "Static"]
@@ -1468,24 +1362,182 @@ git-tree-sha1 = "debdd00ffef04665ccbb3e150747a77560e8fad1"
 uuid = "615f187c-cbe4-4ef1-ba3b-2fcf58d6d173"
 version = "0.1.1"
 
+[[deps.ImageAxes]]
+deps = ["AxisArrays", "ImageBase", "ImageCore", "Reexport", "SimpleTraits"]
+git-tree-sha1 = "2e4520d67b0cef90865b3ef727594d2a58e0e1f8"
+uuid = "2803e5a7-5153-5ecf-9a86-9b4c37f5f5ac"
+version = "0.6.11"
+
+[[deps.ImageBase]]
+deps = ["ImageCore", "Reexport"]
+git-tree-sha1 = "eb49b82c172811fd2c86759fa0553a2221feb909"
+uuid = "c817782e-172a-44cc-b673-b171935fbb9e"
+version = "0.1.7"
+
+[[deps.ImageBinarization]]
+deps = ["HistogramThresholding", "ImageCore", "LinearAlgebra", "Polynomials", "Reexport", "Statistics"]
+git-tree-sha1 = "f5356e7203c4a9954962e3757c08033f2efe578a"
+uuid = "cbc4b850-ae4b-5111-9e64-df94c024a13d"
+version = "0.3.0"
+
+[[deps.ImageContrastAdjustment]]
+deps = ["ImageBase", "ImageCore", "ImageTransformations", "Parameters"]
+git-tree-sha1 = "eb3d4365a10e3f3ecb3b115e9d12db131d28a386"
+uuid = "f332f351-ec65-5f6a-b3d1-319c6670881a"
+version = "0.3.12"
+
+[[deps.ImageCore]]
+deps = ["AbstractFFTs", "ColorVectorSpace", "Colors", "FixedPointNumbers", "MappedArrays", "MosaicViews", "OffsetArrays", "PaddedViews", "PrecompileTools", "Reexport"]
+git-tree-sha1 = "fc5d1d3443a124fde6e92d0260cd9e064eba69f8"
+uuid = "a09fc81d-aa75-5fe9-8630-4744c3626534"
+version = "0.10.1"
+
+[[deps.ImageCorners]]
+deps = ["ImageCore", "ImageFiltering", "PrecompileTools", "StaticArrays", "StatsBase"]
+git-tree-sha1 = "24c52de051293745a9bad7d73497708954562b79"
+uuid = "89d5987c-236e-4e32-acd0-25bd6bd87b70"
+version = "0.1.3"
+
+[[deps.ImageDistances]]
+deps = ["Distances", "ImageCore", "ImageMorphology", "LinearAlgebra", "Statistics"]
+git-tree-sha1 = "08b0e6354b21ef5dd5e49026028e41831401aca8"
+uuid = "51556ac3-7006-55f5-8cb3-34580c88182d"
+version = "0.2.17"
+
+[[deps.ImageFiltering]]
+deps = ["CatIndices", "ComputationalResources", "DataStructures", "FFTViews", "FFTW", "ImageBase", "ImageCore", "LinearAlgebra", "OffsetArrays", "PrecompileTools", "Reexport", "SparseArrays", "StaticArrays", "Statistics", "TiledIteration"]
+git-tree-sha1 = "432ae2b430a18c58eb7eca9ef8d0f2db90bc749c"
+uuid = "6a3955dd-da59-5b1f-98d4-e7296123deb5"
+version = "0.7.8"
+
+[[deps.ImageIO]]
+deps = ["FileIO", "IndirectArrays", "JpegTurbo", "LazyModules", "Netpbm", "OpenEXR", "PNGFiles", "QOI", "Sixel", "TiffImages", "UUIDs"]
+git-tree-sha1 = "bca20b2f5d00c4fbc192c3212da8fa79f4688009"
+uuid = "82e4d734-157c-48bb-816b-45c225c6df19"
+version = "0.6.7"
+
+[[deps.ImageMagick]]
+deps = ["FileIO", "ImageCore", "ImageMagick_jll", "InteractiveUtils"]
+git-tree-sha1 = "b0b765ff0b4c3ee20ce6740d843be8dfce48487c"
+uuid = "6218d12a-5da1-5696-b52f-db25d2ecc6d1"
+version = "1.3.0"
+
+[[deps.ImageMagick_jll]]
+deps = ["JpegTurbo_jll", "Libdl", "Libtiff_jll", "Pkg", "Zlib_jll", "libpng_jll"]
+git-tree-sha1 = "1c0a2295cca535fabaf2029062912591e9b61987"
+uuid = "c73af94c-d91f-53ed-93a7-00f77d67a9d7"
+version = "6.9.10-12+3"
+
+[[deps.ImageMetadata]]
+deps = ["AxisArrays", "ImageAxes", "ImageBase", "ImageCore"]
+git-tree-sha1 = "355e2b974f2e3212a75dfb60519de21361ad3cb7"
+uuid = "bc367c6b-8a6b-528e-b4bd-a4b897500b49"
+version = "0.9.9"
+
+[[deps.ImageMorphology]]
+deps = ["DataStructures", "ImageCore", "LinearAlgebra", "LoopVectorization", "OffsetArrays", "Requires", "TiledIteration"]
+git-tree-sha1 = "6f0a801136cb9c229aebea0df296cdcd471dbcd1"
+uuid = "787d08f9-d448-5407-9aad-5290dd7ab264"
+version = "0.4.5"
+
+[[deps.ImageQualityIndexes]]
+deps = ["ImageContrastAdjustment", "ImageCore", "ImageDistances", "ImageFiltering", "LazyModules", "OffsetArrays", "PrecompileTools", "Statistics"]
+git-tree-sha1 = "783b70725ed326340adf225be4889906c96b8fd1"
+uuid = "2996bd0c-7a13-11e9-2da2-2f5ce47296a9"
+version = "0.3.7"
+
+[[deps.ImageSegmentation]]
+deps = ["Clustering", "DataStructures", "Distances", "Graphs", "ImageCore", "ImageFiltering", "ImageMorphology", "LinearAlgebra", "MetaGraphs", "RegionTrees", "SimpleWeightedGraphs", "StaticArrays", "Statistics"]
+git-tree-sha1 = "3ff0ca203501c3eedde3c6fa7fd76b703c336b5f"
+uuid = "80713f31-8817-5129-9cf8-209ff8fb23e1"
+version = "1.8.2"
+
+[[deps.ImageShow]]
+deps = ["Base64", "ColorSchemes", "FileIO", "ImageBase", "ImageCore", "OffsetArrays", "StackViews"]
+git-tree-sha1 = "3b5344bcdbdc11ad58f3b1956709b5b9345355de"
+uuid = "4e3cecfd-b093-5904-9786-8bbb286a6a31"
+version = "0.3.8"
+
+[[deps.ImageTransformations]]
+deps = ["AxisAlgorithms", "CoordinateTransformations", "ImageBase", "ImageCore", "Interpolations", "OffsetArrays", "Rotations", "StaticArrays"]
+git-tree-sha1 = "7ec124670cbce8f9f0267ba703396960337e54b5"
+uuid = "02fcd773-0e25-5acc-982a-7f6622650795"
+version = "0.10.0"
+
+[[deps.Images]]
+deps = ["Base64", "FileIO", "Graphics", "ImageAxes", "ImageBase", "ImageBinarization", "ImageContrastAdjustment", "ImageCore", "ImageCorners", "ImageDistances", "ImageFiltering", "ImageIO", "ImageMagick", "ImageMetadata", "ImageMorphology", "ImageQualityIndexes", "ImageSegmentation", "ImageShow", "ImageTransformations", "IndirectArrays", "IntegralArrays", "Random", "Reexport", "SparseArrays", "StaticArrays", "Statistics", "StatsBase", "TiledIteration"]
+git-tree-sha1 = "d438268ed7a665f8322572be0dabda83634d5f45"
+uuid = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
+version = "0.26.0"
+
+[[deps.Imath_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "3d09a9f60edf77f8a4d99f9e015e8fbf9989605d"
+uuid = "905a6f67-0a94-5f89-b386-d35d92009cd1"
+version = "3.1.7+0"
+
+[[deps.IndirectArrays]]
+git-tree-sha1 = "012e604e1c7458645cb8b436f8fba789a51b257f"
+uuid = "9b13fd28-a010-5f03-acff-a1bbcff69959"
+version = "1.0.0"
+
 [[deps.Inflate]]
 git-tree-sha1 = "5cd07aab533df5170988219191dfad0519391428"
 uuid = "d25df0c9-e2be-5dd7-82c8-3ad0b3e990b9"
 version = "0.1.3"
 
+[[deps.IntegralArrays]]
+deps = ["ColorTypes", "FixedPointNumbers", "IntervalSets"]
+git-tree-sha1 = "be8e690c3973443bec584db3346ddc904d4884eb"
+uuid = "1d092043-8f09-5a30-832f-7509e371ab51"
+version = "0.1.5"
+
+[[deps.IntelOpenMP_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
+git-tree-sha1 = "ad37c091f7d7daf900963171600d7c1c5c3ede32"
+uuid = "1d5cc7b8-4909-519e-a0f8-d0f5ad9712d0"
+version = "2023.2.0+0"
+
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+
+[[deps.Interpolations]]
+deps = ["Adapt", "AxisAlgorithms", "ChainRulesCore", "LinearAlgebra", "OffsetArrays", "Random", "Ratios", "Requires", "SharedArrays", "SparseArrays", "StaticArrays", "WoodburyMatrices"]
+git-tree-sha1 = "721ec2cf720536ad005cb38f50dbba7b02419a15"
+uuid = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
+version = "0.14.7"
+
+[[deps.IntervalSets]]
+deps = ["Dates", "Random"]
+git-tree-sha1 = "8e59ea773deee525c99a8018409f64f19fb719e6"
+uuid = "8197267c-284f-5f27-9208-e0e47529a953"
+version = "0.7.7"
+weakdeps = ["Statistics"]
+
+    [deps.IntervalSets.extensions]
+    IntervalSetsStatisticsExt = "Statistics"
 
 [[deps.IrrationalConstants]]
 git-tree-sha1 = "630b497eafcc20001bba38a4651b327dcfc491d2"
 uuid = "92d709cd-6900-40b7-9082-c6be49f344b6"
 version = "0.2.2"
 
+[[deps.IterTools]]
+git-tree-sha1 = "4ced6667f9974fc5c5943fa5e2ef1ca43ea9e450"
+uuid = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
+version = "1.8.0"
+
 [[deps.IteratorInterfaceExtensions]]
 git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
 uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
+
+[[deps.JLD2]]
+deps = ["FileIO", "MacroTools", "Mmap", "OrderedCollections", "Pkg", "Printf", "Reexport", "Requires", "TranscodingStreams", "UUIDs"]
+git-tree-sha1 = "aa6ffef1fd85657f4999030c52eaeec22a279738"
+uuid = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+version = "0.4.33"
 
 [[deps.JLFzf]]
 deps = ["Pipe", "REPL", "Random", "fzf_jll"]
@@ -1504,6 +1556,12 @@ deps = ["Dates", "Mmap", "Parsers", "Unicode"]
 git-tree-sha1 = "31e996f0a15c7b280ba9f76636b3ff9e2ae58c9a"
 uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 version = "0.21.4"
+
+[[deps.JpegTurbo]]
+deps = ["CEnum", "FileIO", "ImageCore", "JpegTurbo_jll", "TOML"]
+git-tree-sha1 = "327713faef2a3e5c80f96bf38d1fa26f7a6ae29e"
+uuid = "b835a17e-a41a-41e7-81f0-2f016b05efe0"
+version = "0.1.3"
 
 [[deps.JpegTurbo_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
@@ -1588,6 +1646,15 @@ git-tree-sha1 = "1370f8202dac30758f3c345f9909b97f53d87d3f"
 uuid = "50d2b5c4-7a5e-59d5-8109-a42b560f39c0"
 version = "0.15.1"
 
+[[deps.LazyArtifacts]]
+deps = ["Artifacts", "Pkg"]
+uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
+
+[[deps.LazyModules]]
+git-tree-sha1 = "a560dd966b386ac9ae60bdd3a3d3a326062d3c3e"
+uuid = "8cdb02fc-e678-4876-92c5-9defec4f444e"
+version = "0.3.1"
+
 [[deps.LevyArea]]
 deps = ["LinearAlgebra", "Random", "SpecialFunctions"]
 git-tree-sha1 = "56513a09b8e0ae6485f34401ea9e2f31357958ec"
@@ -1653,10 +1720,10 @@ uuid = "4b2f31a3-9ecc-558c-b454-b3730dcb73e9"
 version = "2.35.0+0"
 
 [[deps.Libtiff_jll]]
-deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "XZ_jll", "Zlib_jll", "Zstd_jll"]
-git-tree-sha1 = "2da088d113af58221c52828a80378e16be7d037a"
+deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "LERC_jll", "Libdl", "Pkg", "Zlib_jll", "Zstd_jll"]
+git-tree-sha1 = "3eb79b0ca5764d4799c06699573fd8f533259713"
 uuid = "89763e89-9b03-5906-acba-b20f662cd828"
-version = "4.5.1+1"
+version = "4.4.0+0"
 
 [[deps.Libuuid_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1739,6 +1806,12 @@ git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
 uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
 version = "0.1.4"
 
+[[deps.MKL_jll]]
+deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "Pkg"]
+git-tree-sha1 = "eb006abbd7041c28e0d16260e50a24f8f9104913"
+uuid = "856f044c-d86e-5d09-b602-aeab76dc8ba7"
+version = "2023.2.0+0"
+
 [[deps.MacroTools]]
 deps = ["Markdown", "Random"]
 git-tree-sha1 = "9ee1618cbf5240e6d4e0371d6f24065083f60c48"
@@ -1749,6 +1822,11 @@ version = "0.5.11"
 git-tree-sha1 = "bcaef4fc7a0cfe2cba636d84cda54b5e4e4ca3cd"
 uuid = "d125e4d3-2237-4719-b19c-fa641b8a4667"
 version = "0.1.8"
+
+[[deps.MappedArrays]]
+git-tree-sha1 = "2dab0221fe2b0f2cb6754eaa743cc266339f527e"
+uuid = "dbb5928d-eab1-5f90-85c2-b9b0edb7c900"
+version = "0.4.2"
 
 [[deps.Markdown]]
 deps = ["Base64"]
@@ -1770,6 +1848,12 @@ git-tree-sha1 = "c13304c81eec1ed3af7fc20e75fb6b26092a1102"
 uuid = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 version = "0.3.2"
 
+[[deps.MetaGraphs]]
+deps = ["Graphs", "JLD2", "Random"]
+git-tree-sha1 = "1130dbe1d5276cb656f6e1094ce97466ed700e5a"
+uuid = "626554b9-1ddb-594c-aa3c-2596fe9399a5"
+version = "0.7.2"
+
 [[deps.Missings]]
 deps = ["DataAPI"]
 git-tree-sha1 = "f66bdc5de519e8f8ae43bdc598782d35a25b1272"
@@ -1778,6 +1862,12 @@ version = "1.1.0"
 
 [[deps.Mmap]]
 uuid = "a63ad114-7e13-5084-954f-fe012c677804"
+
+[[deps.MosaicViews]]
+deps = ["MappedArrays", "OffsetArrays", "PaddedViews", "StackViews"]
+git-tree-sha1 = "7b86a5d4d70a9f5cdf2dacb3cbe6d251d1a61dbe"
+uuid = "e94cdb99-869f-56ef-bcf0-1ae2bcbe0389"
+version = "0.3.4"
 
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
@@ -1806,6 +1896,18 @@ git-tree-sha1 = "0877504529a3e5c3343c6f8b4c0381e57e4387e4"
 uuid = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
 version = "1.0.2"
 
+[[deps.NearestNeighbors]]
+deps = ["Distances", "StaticArrays"]
+git-tree-sha1 = "2c3726ceb3388917602169bed973dbc97f1b51a8"
+uuid = "b8a86587-4115-5ab1-83bc-aa920d37bbce"
+version = "0.4.13"
+
+[[deps.Netpbm]]
+deps = ["FileIO", "ImageCore", "ImageMetadata"]
+git-tree-sha1 = "d92b107dbb887293622df7697a2223f9f8176fcd"
+uuid = "f09324ee-3d7c-5217-9330-fc30815ba969"
+version = "1.1.1"
+
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 version = "1.2.0"
@@ -1832,6 +1934,18 @@ version = "1.3.5+1"
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
 version = "0.3.23+2"
+
+[[deps.OpenEXR]]
+deps = ["Colors", "FileIO", "OpenEXR_jll"]
+git-tree-sha1 = "327f53360fdb54df7ecd01e96ef1983536d1e633"
+uuid = "52e1d378-f018-4a11-a4be-720524705ac7"
+version = "0.3.2"
+
+[[deps.OpenEXR_jll]]
+deps = ["Artifacts", "Imath_jll", "JLLWrappers", "Libdl", "Zlib_jll"]
+git-tree-sha1 = "a4ca623df1ae99d09bc9868b008262d0c0ac1e4f"
+uuid = "18a262bb-aa17-5467-a713-aee519bc75cb"
+version = "3.1.4+0"
 
 [[deps.OpenLibm_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -1890,11 +2004,23 @@ git-tree-sha1 = "67eae2738d63117a196f497d7db789821bce61d1"
 uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
 version = "0.11.17"
 
+[[deps.PNGFiles]]
+deps = ["Base64", "CEnum", "ImageCore", "IndirectArrays", "OffsetArrays", "libpng_jll"]
+git-tree-sha1 = "9b02b27ac477cad98114584ff964e3052f656a0f"
+uuid = "f57f5aa1-a3ce-4bc8-8ab9-96f992907883"
+version = "0.4.0"
+
 [[deps.PackageExtensionCompat]]
 git-tree-sha1 = "f9b1e033c2b1205cf30fd119f4e50881316c1923"
 uuid = "65ce6f38-6b18-4e1d-a461-8949797d7930"
 version = "1.0.1"
 weakdeps = ["Requires", "TOML"]
+
+[[deps.PaddedViews]]
+deps = ["OffsetArrays"]
+git-tree-sha1 = "0fac6313486baae819364c52b4f483450a9d793f"
+uuid = "5432bcbf-9aad-5242-b902-cca2824c8663"
+version = "0.5.12"
 
 [[deps.Parameters]]
 deps = ["OrderedCollections", "UnPack"]
@@ -1923,6 +2049,12 @@ version = "0.42.2+0"
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 version = "1.10.0"
+
+[[deps.PkgVersion]]
+deps = ["Pkg"]
+git-tree-sha1 = "f9501cc0430a26bc3d156ae1b5b0c1b47af4d6da"
+uuid = "eebad327-c553-4316-9ea0-9fa01ccd7688"
+version = "0.3.3"
 
 [[deps.PlotThemes]]
 deps = ["PlotUtils", "Statistics"]
@@ -1980,6 +2112,22 @@ git-tree-sha1 = "240d7170f5ffdb285f9427b92333c3463bf65bf6"
 uuid = "1d0040c9-8b98-4ee7-8388-3f51789ca0ad"
 version = "0.2.1"
 
+[[deps.Polynomials]]
+deps = ["LinearAlgebra", "RecipesBase"]
+git-tree-sha1 = "3aa2bb4982e575acd7583f01531f241af077b163"
+uuid = "f27b6e38-b328-58d1-80ce-0feddd5e7a45"
+version = "3.2.13"
+
+    [deps.Polynomials.extensions]
+    PolynomialsChainRulesCoreExt = "ChainRulesCore"
+    PolynomialsMakieCoreExt = "MakieCore"
+    PolynomialsMutableArithmeticsExt = "MutableArithmetics"
+
+    [deps.Polynomials.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    MakieCore = "20f20a25-4f0e-4fdf-b5d1-57303727442b"
+    MutableArithmetics = "d8a4904e-b15c-11e9-3269-09a3773c0cb0"
+
 [[deps.PositiveFactorizations]]
 deps = ["LinearAlgebra"]
 git-tree-sha1 = "17275485f373e6673f7e7f97051f703ed5b15b20"
@@ -2014,17 +2162,35 @@ version = "1.4.0"
 deps = ["Unicode"]
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
-[[deps.Qt6Base_jll]]
-deps = ["Artifacts", "CompilerSupportLibraries_jll", "Fontconfig_jll", "Glib_jll", "JLLWrappers", "Libdl", "Libglvnd_jll", "OpenSSL_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Xorg_libxcb_jll", "Xorg_xcb_util_image_jll", "Xorg_xcb_util_keysyms_jll", "Xorg_xcb_util_renderutil_jll", "Xorg_xcb_util_wm_jll", "Zlib_jll", "xkbcommon_jll"]
-git-tree-sha1 = "364898e8f13f7eaaceec55fd3d08680498c0aa6e"
-uuid = "c0090381-4147-56d7-9ebc-da0b1113ec56"
-version = "6.4.2+3"
+[[deps.ProgressMeter]]
+deps = ["Distributed", "Printf"]
+git-tree-sha1 = "00099623ffee15972c16111bcf84c58a0051257c"
+uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
+version = "1.9.0"
+
+[[deps.QOI]]
+deps = ["ColorTypes", "FileIO", "FixedPointNumbers"]
+git-tree-sha1 = "18e8f4d1426e965c7b532ddd260599e1510d26ce"
+uuid = "4b34888f-f399-49d4-9bb3-47ed5cae4e65"
+version = "1.0.0"
+
+[[deps.Qt5Base_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "Fontconfig_jll", "Glib_jll", "JLLWrappers", "Libdl", "Libglvnd_jll", "OpenSSL_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libxcb_jll", "Xorg_xcb_util_image_jll", "Xorg_xcb_util_keysyms_jll", "Xorg_xcb_util_renderutil_jll", "Xorg_xcb_util_wm_jll", "Zlib_jll", "xkbcommon_jll"]
+git-tree-sha1 = "0c03844e2231e12fda4d0086fd7cbe4098ee8dc5"
+uuid = "ea2cea3b-5b76-57ae-a6ef-0a8af62496e1"
+version = "5.15.3+2"
 
 [[deps.QuadGK]]
 deps = ["DataStructures", "LinearAlgebra"]
 git-tree-sha1 = "6ec7ac8412e83d57e313393220879ede1740f9ee"
 uuid = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 version = "2.8.2"
+
+[[deps.Quaternions]]
+deps = ["LinearAlgebra", "Random", "RealDot"]
+git-tree-sha1 = "da095158bdc8eaccb7890f9884048555ab771019"
+uuid = "94ee1d12-ae83-5a48-8b1c-48b8ff168ae0"
+version = "0.7.4"
 
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
@@ -2046,6 +2212,27 @@ git-tree-sha1 = "043da614cc7e95c703498a491e2c21f58a2b8111"
 uuid = "e6cf234a-135c-5ec9-84dd-332b85af5143"
 version = "1.5.3"
 
+[[deps.RangeArrays]]
+git-tree-sha1 = "b9039e93773ddcfc828f12aadf7115b4b4d225f5"
+uuid = "b3c3ace0-ae52-54e7-9d0b-2c1406fd6b9d"
+version = "0.3.2"
+
+[[deps.Ratios]]
+deps = ["Requires"]
+git-tree-sha1 = "1342a47bf3260ee108163042310d26f2be5ec90b"
+uuid = "c84ed2f1-dad5-54f0-aa8e-dbefe2724439"
+version = "0.4.5"
+weakdeps = ["FixedPointNumbers"]
+
+    [deps.Ratios.extensions]
+    RatiosFixedPointNumbersExt = "FixedPointNumbers"
+
+[[deps.RealDot]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "9f0a1b71baaf7650f4fa8a1d168c7fb6ee41f0c9"
+uuid = "c1ae055f-0cd5-4b69-90a6-9a35b1a98df9"
+version = "0.1.0"
+
 [[deps.RecipesBase]]
 deps = ["PrecompileTools"]
 git-tree-sha1 = "5c3d09cc4f31f5fc6af001c250bf1278733100ff"
@@ -2060,17 +2247,19 @@ version = "0.6.12"
 
 [[deps.RecursiveArrayTools]]
 deps = ["Adapt", "ArrayInterface", "DocStringExtensions", "GPUArraysCore", "IteratorInterfaceExtensions", "LinearAlgebra", "RecipesBase", "Requires", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface", "Tables"]
-git-tree-sha1 = "5f834446731ba29d1d68d91fddf8f9593b68b7a2"
+git-tree-sha1 = "d7087c013e8a496ff396bae843b1e16d9a30ede8"
 uuid = "731186ca-8d62-57ce-b412-fbd966d074cd"
-version = "2.38.8"
+version = "2.38.10"
 
     [deps.RecursiveArrayTools.extensions]
     RecursiveArrayToolsMeasurementsExt = "Measurements"
+    RecursiveArrayToolsMonteCarloMeasurementsExt = "MonteCarloMeasurements"
     RecursiveArrayToolsTrackerExt = "Tracker"
     RecursiveArrayToolsZygoteExt = "Zygote"
 
     [deps.RecursiveArrayTools.weakdeps]
     Measurements = "eff96d63-e80a-5855-80a2-b1b0885c5ab7"
+    MonteCarloMeasurements = "0987c9cc-fe09-11e8-30f0-b96dd679fdca"
     Tracker = "9f7883ad-71c0-57eb-9f7f-b5c9e6d3789c"
     Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
@@ -2084,6 +2273,12 @@ version = "0.2.20"
 git-tree-sha1 = "45e428421666073eab6f2da5c9d310d99bb12f9b"
 uuid = "189a3867-3050-52da-a836-e630ba90ab69"
 version = "1.2.2"
+
+[[deps.RegionTrees]]
+deps = ["IterTools", "LinearAlgebra", "StaticArrays"]
+git-tree-sha1 = "4618ed0da7a251c7f92e869ae1a19c74a7d2a7f9"
+uuid = "dee08c22-ab7f-5625-9660-a9af2021b33f"
+version = "0.3.2"
 
 [[deps.RelocatableFolders]]
 deps = ["SHA", "Scratch"]
@@ -2115,6 +2310,12 @@ git-tree-sha1 = "6ed52fdd3382cf21947b15e8870ac0ddbff736da"
 uuid = "f50d1b31-88e8-58de-be2c-1cc44531875f"
 version = "0.4.0+0"
 
+[[deps.Rotations]]
+deps = ["LinearAlgebra", "Quaternions", "Random", "StaticArrays"]
+git-tree-sha1 = "54ccb4dbab4b1f69beb255a2c0ca5f65a9c82f08"
+uuid = "6038ab10-8711-5258-84ad-4b1120ba62dc"
+version = "1.5.1"
+
 [[deps.RuntimeGeneratedFunctions]]
 deps = ["ExprTools", "SHA", "Serialization"]
 git-tree-sha1 = "6aacc5eefe8415f47b3e34214c1d79d2674a0ba2"
@@ -2137,10 +2338,10 @@ uuid = "476501e8-09a2-5ece-8869-fb82de89a1fa"
 version = "0.6.39"
 
 [[deps.SciMLBase]]
-deps = ["ADTypes", "ArrayInterface", "ChainRulesCore", "CommonSolve", "ConstructionBase", "Distributed", "DocStringExtensions", "EnumX", "FunctionWrappersWrappers", "IteratorInterfaceExtensions", "LinearAlgebra", "Logging", "Markdown", "PrecompileTools", "Preferences", "RecipesBase", "RecursiveArrayTools", "Reexport", "RuntimeGeneratedFunctions", "SciMLOperators", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface", "Tables", "TruncatedStacktraces", "ZygoteRules"]
-git-tree-sha1 = "c0781c7ebb65776e9770d333b5e191d20dd45fcf"
+deps = ["ADTypes", "ArrayInterface", "ChainRulesCore", "CommonSolve", "ConstructionBase", "Distributed", "DocStringExtensions", "EnumX", "FillArrays", "FunctionWrappersWrappers", "IteratorInterfaceExtensions", "LinearAlgebra", "Logging", "Markdown", "PrecompileTools", "Preferences", "RecipesBase", "RecursiveArrayTools", "Reexport", "RuntimeGeneratedFunctions", "SciMLOperators", "StaticArraysCore", "Statistics", "SymbolicIndexingInterface", "Tables", "TruncatedStacktraces", "ZygoteRules"]
+git-tree-sha1 = "827c87edbb5ad34a5e61accc99269285291c692e"
 uuid = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
-version = "1.97.0"
+version = "1.97.1"
 
     [deps.SciMLBase.extensions]
     ZygoteExt = "Zygote"
@@ -2213,6 +2414,18 @@ git-tree-sha1 = "58e6353e72cde29b90a69527e56df1b5c3d8c437"
 uuid = "ce78b400-467f-4804-87d8-8f486da07d0a"
 version = "1.1.0"
 
+[[deps.SimpleWeightedGraphs]]
+deps = ["Graphs", "LinearAlgebra", "Markdown", "SparseArrays"]
+git-tree-sha1 = "4b33e0e081a825dbfaf314decf58fa47e53d6acb"
+uuid = "47aef6b3-ad0c-573a-a1e2-d07658019622"
+version = "1.4.0"
+
+[[deps.Sixel]]
+deps = ["Dates", "FileIO", "ImageCore", "IndirectArrays", "OffsetArrays", "REPL", "libsixel_jll"]
+git-tree-sha1 = "2da10356e31327c7096832eb9cd86307a50b1eb6"
+uuid = "45858cf5-a6b0-47a3-bbea-62219f50df47"
+version = "0.1.3"
+
 [[deps.SnoopPrecompile]]
 deps = ["Preferences"]
 git-tree-sha1 = "e760a70afdcd461cf01a575947738d359234665c"
@@ -2264,6 +2477,12 @@ weakdeps = ["ChainRulesCore"]
 
     [deps.SpecialFunctions.extensions]
     SpecialFunctionsChainRulesCoreExt = "ChainRulesCore"
+
+[[deps.StackViews]]
+deps = ["OffsetArrays"]
+git-tree-sha1 = "46e589465204cd0c08b4bd97385e4fa79a0c770c"
+uuid = "cae243ae-269e-4f55-b966-ac2d0dc13c15"
+version = "0.1.1"
 
 [[deps.Static]]
 deps = ["IfElse"]
@@ -2357,9 +2576,9 @@ version = "7.2.0+1"
 
 [[deps.Sundials]]
 deps = ["CEnum", "DataStructures", "DiffEqBase", "Libdl", "LinearAlgebra", "Logging", "PrecompileTools", "Reexport", "SciMLBase", "SparseArrays", "Sundials_jll"]
-git-tree-sha1 = "4931f9013c53128337ce8df54a2d38c79fe58d4c"
+git-tree-sha1 = "c9b635bd3210bc29228c86cb44459b06dfffb229"
 uuid = "c3572dad-4567-51f8-b174-8c6c989267f4"
-version = "4.19.3"
+version = "4.19.4"
 
 [[deps.Sundials_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "SuiteSparse_jll", "libblastrampoline_jll"]
@@ -2410,6 +2629,18 @@ deps = ["ManualMemory"]
 git-tree-sha1 = "eda08f7e9818eb53661b3deb74e3159460dfbc27"
 uuid = "8290d209-cae3-49c0-8002-c8c24d57dab5"
 version = "0.5.2"
+
+[[deps.TiffImages]]
+deps = ["ColorTypes", "DataStructures", "DocStringExtensions", "FileIO", "FixedPointNumbers", "IndirectArrays", "Inflate", "Mmap", "OffsetArrays", "PkgVersion", "ProgressMeter", "UUIDs"]
+git-tree-sha1 = "8621f5c499a8aa4aa970b1ae381aae0ef1576966"
+uuid = "731e570b-9d59-4bfa-96dc-6df516fadf69"
+version = "0.6.4"
+
+[[deps.TiledIteration]]
+deps = ["OffsetArrays", "StaticArrayInterface"]
+git-tree-sha1 = "1176cc31e867217b06928e2f140c90bd1bc88283"
+uuid = "06e1c1a7-607b-532d-9fad-de7d9aa2abac"
+version = "0.5.0"
 
 [[deps.TranscodingStreams]]
 deps = ["Random", "Test"]
@@ -2512,6 +2743,12 @@ git-tree-sha1 = "4528479aa01ee1b3b4cd0e6faef0e04cf16466da"
 uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
 version = "1.25.0+0"
 
+[[deps.WoodburyMatrices]]
+deps = ["LinearAlgebra", "SparseArrays"]
+git-tree-sha1 = "de67fa59e33ad156a590055375a30b23c40299d3"
+uuid = "efce3f68-66dc-5838-9240-27a6d6f5f9b6"
+version = "0.5.5"
+
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
 git-tree-sha1 = "04a51d15436a572301b5abbb9d099713327e9fc4"
@@ -2523,12 +2760,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Libgcrypt_jll", "Libgpg_error_jll"
 git-tree-sha1 = "91844873c4085240b95e795f692c4cec4d805f8a"
 uuid = "aed1982a-8fda-507f-9586-7b0439959a61"
 version = "1.1.34+0"
-
-[[deps.XZ_jll]]
-deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "cf2c7de82431ca6f39250d2fc4aacd0daa1675c0"
-uuid = "ffd25f8a-64ca-5728-b0f7-c24cf3aae800"
-version = "5.4.4+0"
 
 [[deps.Xorg_libX11_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Xorg_libxcb_jll", "Xorg_xtrans_jll"]
@@ -2708,6 +2939,12 @@ git-tree-sha1 = "94d180a6d2b5e55e447e2d27a29ed04fe79eb30c"
 uuid = "b53b4c65-9356-5827-b1ea-8c7a1a84506f"
 version = "1.6.38+0"
 
+[[deps.libsixel_jll]]
+deps = ["Artifacts", "JLLWrappers", "JpegTurbo_jll", "Libdl", "Pkg", "libpng_jll"]
+git-tree-sha1 = "d4f63314c8aa1e48cd22aa0c17ed76cd1ae48c3c"
+uuid = "075b6546-f08a-558a-be8f-8157d0f608a5"
+version = "1.10.3+0"
+
 [[deps.libvorbis_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Ogg_jll", "Pkg"]
 git-tree-sha1 = "b910cb81ef3fe6e78bf6acee440bda86fd6ae00c"
@@ -2760,6 +2997,7 @@ version = "1.4.1+0"
 # ╟─97460bf6-ce4f-4210-9664-8c6c43a9a382
 # ╟─0526ff5b-952c-4cba-842b-1059c67c12e1
 # ╟─f0eb3973-f9c4-41fc-8f38-3bcb71e76c7d
+# ╟─c8fc76f7-f900-460b-a6e3-a33a3386a8e0
 # ╟─19696716-d7ae-4ffd-8b73-399e5f02831b
 # ╟─0350b1d6-4245-4b86-8b45-be9c00a16c77
 # ╟─e7080c15-ac7e-4106-8df4-65a668e39b83
@@ -2777,17 +3015,39 @@ version = "1.4.1+0"
 # ╠═dd03796a-0520-418a-88f3-f11547b05a19
 # ╟─217ac117-5415-4938-a543-8ebe5cca7898
 # ╟─17ca6c6a-d282-457d-961d-40275a01927a
-# ╠═7ec2e638-f7af-410e-8b09-7f1f4e40825b
-# ╠═6c50e998-5265-11ee-26eb-0f88bae8e979
-# ╠═71b24653-c6e2-4539-b8cc-082b3d838da7
-# ╠═bba54dba-5ba4-4073-894c-c6fecbf3f590
-# ╟─1978ada5-5a05-4254-8e0b-33717bed0aa3
-# ╠═611b3854-ba93-46d1-b270-4c6ddeea6585
-# ╠═b23e2924-a4ee-429e-b470-ceafa0dffc88
-# ╠═15634a5e-3e52-4076-8f04-d606c0caa828
-# ╠═28a8d2df-d794-4cbf-8641-2324b8d172e4
+# ╟─c912af64-147f-4ca5-a567-45f5c5e50303
+# ╟─3e920b70-d5b6-44f4-b257-e7568a458173
+# ╠═d7ccc528-a811-4c31-8d64-fa2ce1e813cb
+# ╟─e56e6e62-5f38-467d-83bd-daaf4a968044
+# ╟─47e4da81-2c79-44bc-8d87-a9a0f2e45d4e
+# ╟─47b00e38-83d1-4888-baee-662bd716827c
+# ╠═557ec9ad-5d1b-43a8-af0f-fd46077b840d
+# ╠═a9bd0620-2f80-43e8-b83a-c0102e6a2b4d
 # ╠═cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
+# ╠═3faa8490-10f2-47f5-af38-d832401d5487
+# ╠═2a77d78c-1b8a-4690-9024-46a6794d8efd
+# ╠═7a7a67a7-7958-43bb-bf54-36b80ecdf1de
+# ╠═89c89069-16f2-47d1-a36b-ea1101889f17
+# ╠═7c9b744e-72cd-449e-8228-a25b5c845233
+# ╟─71b24653-c6e2-4539-b8cc-082b3d838da7
+# ╠═e48d51a3-debc-4339-84fe-20ee9613e808
+# ╟─9a0aa371-9fbf-493f-ba4e-cb0801c2d5ef
+# ╟─861049ba-49d9-4f8c-a186-f1f95b282904
+# ╠═83f7c9c7-cf37-44f0-8e51-ea6596d83605
+# ╟─688712c4-b57f-49de-a1e9-3a3299eef60e
+# ╟─92b945aa-b19f-4732-963b-a3e8b42a6b02
+# ╟─d5b9c28b-e9fc-4e04-bf05-5b0b93da804e
+# ╠═2c01678b-2501-4cb1-b1ba-9e6533a8a364
+# ╠═5bcf708c-8dc2-4a2d-a284-c17db2ea8b9a
+# ╠═9dd097b6-5f82-4fbe-b0d1-86756b7747d2
+# ╠═3ed68b8f-db59-40fe-87ef-8df03f81f9df
+# ╟─1e1b6bed-9224-4968-afb6-6bbc9d635191
+# ╠═d11eade6-9a90-419f-b78c-0bb2d9f2d93d
+# ╟─611b3854-ba93-46d1-b270-4c6ddeea6585
+# ╟─070107d5-40e4-4f63-bdb9-9f315ebf18ba
+# ╟─948cee7b-2533-4693-a333-88231054ff83
+# ╟─54f1f6fe-acc1-4308-b5f9-1694de5dab7f
 # ╟─2a5ae2f3-f9a0-4ade-9307-f617a41e36ce
-# ╟─a9dfc324-03ec-4884-a19e-4371ac069e1b
+# ╠═a9dfc324-03ec-4884-a19e-4371ac069e1b
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
