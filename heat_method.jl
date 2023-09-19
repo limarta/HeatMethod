@@ -157,94 +157,19 @@ How do we use heat to produce a notion of distance? For now we will simplify the
 """
 
 # ╔═╡ 0350b1d6-4245-4b86-8b45-be9c00a16c77
-md"""t =  $(@bind t_viz PlutoUI.Slider(range(0,20,101), show_value=true))"""
+md"""t =  $(@bind t_kernel PlutoUI.Slider(range(0,5,101), show_value=true, default=0.7))"""
 
 # ╔═╡ ac43bbab-3014-4ece-b738-157e6367f734
 md"""
 Notably, the amount of heat at a given point on the plate is tied to how long it took for heat to diffuse from the center. Consider a point on the edge of the plate. We see that the temperature is consistently colder than the center, indicating that the point is quite far. Great. We have a notion of distance, but where do the geodesics come into play? By following where the heat flows away (e.g. decreasing temperatures), we can approximate the geodesics by finding paths that monotonically decrease in temperature. This is exactly what is happening when moving away from the center to the edge of the metal plate. 
 
-The next example shows a more complicated setup with *two* source points. In the multisource problem, the distance of the geodesics is the shortest path from any of the source points. The plot on the right shows heat measurements for three different locations. Can you map each dot to the correct bar?
+The next example shows a more complicated setup with *two* source points in a insulated system. In an insulated system, the heat remains on the plate. In the multisource problem, the distance of the geodesics is the shortest path from any of the source points. The plot on the right shows heat measurements for three different locations. Can you map each dot to the correct bar?
 """
-
-# ╔═╡ 387f2124-1802-405f-8d6e-3cfdcefe2f46
-function laplacian_dirichlet(Δu,u,p,t)
-	α, Δx,Δy = p
-    N1, N2 = size(u)
-	Δx² = Δx
-	Δy² = Δy
-    for j in 2:(N2-1)
-        for i in 2:(N1-1)
-            Δu[i, j] = 
-				(u[i+1, j] + u[i-1, j] -2u[i,j]) / Δx² + 
-				(u[i, j+1] + u[i, j-1] -2u[i, j])/ Δy²
-        end
-    end
-
-    # left/right edges
-    for i in 2:(N1 - 1)
-        Δu[i, 1] = (u[i+1, 1] + u[i-1, 1] -2u[i,1])/Δx² + (u[i, 2] - 2u[i, 1])/Δy²
-        Δu[i, N2] = (u[i+1, N2] + u[i-1, N2] -2u[i,N2])/Δx² + (u[i, N2-1] - 2u[i, N2])/Δy²
-    end
-
-    # top/bottom edges
-    for j in 2:(N2-1)
-        Δu[1, j] = (u[1, j+1] + u[1, j-1] - 2u[1,j])/Δx² + (u[2, j] - 2u[1, j])/Δy²
-        Δu[N1, j] = (u[N1, j+1] + u[N1, j-1] -2u[N1,j])/Δx² + (u[N1-1, j] - 2u[N1, j])/Δy²
-    end
-
-    # corners
-    Δu[1, 1] = (u[2, 1]-2u[1,1])/Δx² + (u[1, 2]-2u[1, 1])/Δy²
-    Δu[N1, 1] = (u[N1-1, 1]-2u[N1,1])/Δx² + (u[N1, 2]-2u[N1, 1])/Δy²
-    Δu[1, N2] = (u[2, N2] -2u[1,N2])/Δx²+ (u[1, N2 - 1]-2u[1,N2])/Δy²
-    Δu[N1, N2] = (u[N1 - 1, N2] -2u[N1,N2])/Δx²+ (u[N1, N2 - 1]-2u[N1, N2])/Δy²
-	Δu .*= α
-	Δu
-end
-
-# ╔═╡ e7080c15-ac7e-4106-8df4-65a668e39b83
-let
-	N = 31
-	u0 = zeros(N,N)
-	mid = ceil(Int, N/2)
-	u0[mid,mid] =300.0
-	L = 1.0
-	x = range(0, L, N)
-	y = range(0, L, N)
-	p = (1, step(x), step(y))
-	prob = ODEProblem(laplacian_dirichlet, u0, (0.0, 20.0), p)
-	sol = solve(prob)
-	cfunc(x) = (0.0, max(maximum(x), 0.001))
-	heatmap(x,y,sol(t_viz), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(0,L), ylims=(0,L), background_color_subplot=false, clims=cfunc, size=(400,400))
-end
 
 # ╔═╡ 3a23522e-d7d6-4461-bd33-878e1c823ea6
 md"""
-t = $(@bind t_multi PlutoUI.Slider(0:0.001:0.1, show_value=true, default=0.02))
+t = $(@bind t_multi PlutoUI.Slider(range(0,1,101), show_value=true, default=0.02))
 """
-
-# ╔═╡ 0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
-let
-	N = 31
-	u0 = zeros(N,N)
-	mid = ceil(Int, N/2)
-	u0[2,2] = 1.0
-	u0[end,end] = 1.0
-	L = 1.0
-	dx = range(0,1,N)
-	dy = range(0,1,N)
-	p = (0.1, step(dx), step(dy))
-	problem = ODEProblem(laplacian_dir, u0,(0, 1.0), p)
-	soln = solve(problem)
-	heatmap(dx, dy, soln(t_multi), aspect_ratio=:equal, xlims=(0,L), ylims=(0,L))
-	ii = [20, 9, 2]
-	jj = [20, 9, 20]
-	fig1 = scatter!(dx[ii],dy[jj], markersize=5, color=:green, markerstrokewidth=0, legend=false)
-	measurements = [soln(t_multi)[i,j] for (i,j) in zip(ii,jj)]
-	fig2 = plot(bar(["A","B","C"], measurements), ylabel="Heat", margin=5*Plots.mm)
-	layout = @layout([a b{0.2w}])
-    plot(fig1, fig2, layout = layout, legend = false)
-	
-end
 
 # ╔═╡ 7564b349-5d51-44a0-b78a-654cd1bbfb61
 md"""
@@ -277,7 +202,7 @@ Below we have defined $\texttt{heat\_solution}$ to be the heat kernel with initi
 """
 
 # ╔═╡ c814f0d2-cbb0-4db9-9499-993d51f42356
-@bind t_varadhan Slider(range(0,0.01, 101), show_value=true, default=0.005)
+@bind t_varadhan Slider(range(0,0.1, 101), show_value=true, default=0.005)
 
 # ╔═╡ e1c19aea-d671-4c01-8bcf-119e7abb295f
 md"""
@@ -400,28 +325,140 @@ where the last equality occurs when $dx=dy$. This is usually called the "five-po
 
 To make sense of the boundary cells, the boundary conditions are used. There are two common ones, Dirichlet and Neumann. For Dirichlet, values at the boundary are fixed to $0$ (e.g. $f(s) = 0$) whereas for Neumann boundary conditions, the partial derivatives are fixed (e.g. $f_x(s) = c$).
 
-First we define the Laplacian with Dirichlet boundary conditions.
+First we define the Laplacian with Dirichlet boundary conditions.[^6]
 """
 
-# ╔═╡ 37c582f8-c6fd-4aff-acc8-2bb8e8fa529c
+# ╔═╡ 387f2124-1802-405f-8d6e-3cfdcefe2f46
+function laplacian_dirichlet(Δu,u,p,t)
+	α, Δx,Δy = p
+    N1, N2 = size(u)
+	Δx² = Δx
+	Δy² = Δy
+    for j in 2:(N2-1)
+        for i in 2:(N1-1)
+            Δu[i, j] = 
+				(u[i+1, j] + u[i-1, j] -2u[i,j]) / Δx² + 
+				(u[i, j+1] + u[i, j-1] -2u[i,j])/ Δy²
+        end
+    end
 
+	# Dirichlet condition enforced by dropping neighbors.
+	
+    # left/right edges
+    for i in 2:(N1 - 1)
+        Δu[i, 1] = (u[i+1, 1] + u[i-1, 1] -2u[i,1])/Δx² + (u[i, 2] - 2u[i, 1])/Δy²
+        Δu[i, N2] = (u[i+1, N2] + u[i-1, N2] -2u[i,N2])/Δx² + (u[i, N2-1] - 2u[i, N2])/Δy²
+    end
+
+    # top/bottom edges
+    for j in 2:(N2-1)
+        Δu[1, j] = (u[1, j+1] + u[1, j-1] - 2u[1,j])/Δx² + (u[2, j] - 2u[1, j])/Δy²
+        Δu[N1, j] = (u[N1, j+1] + u[N1, j-1] -2u[N1,j])/Δx² + (u[N1-1, j] - 2u[N1, j])/Δy²
+    end
+
+    # corners
+    Δu[1, 1] = (u[2, 1]-2u[1,1])/Δx² + (u[1, 2]-2u[1, 1])/Δy²
+    Δu[N1, 1] = (u[N1-1, 1]-2u[N1,1])/Δx² + (u[N1, 2]-2u[N1, 1])/Δy²
+    Δu[1, N2] = (u[2, N2] -2u[1,N2])/Δx²+ (u[1, N2 - 1]-2u[1,N2])/Δy²
+    Δu[N1, N2] = (u[N1 - 1, N2]-u[N1,N2])/Δx²+ (u[N1, N2-1]-u[N1, N2])/Δy²
+	Δu .*= α
+	Δu
+end
 
 # ╔═╡ 3ce304a9-3dfd-42f1-b3cf-308b6ce3cbac
 md"""
-Using Neumann is slightly different:
+The Laplacian with Neumann conditions is similar except now...
+"""
+
+# ╔═╡ ff09b1b2-3990-4bc7-8f6b-962e2ecfee3d
+function laplacian_neumann(Δu, u, p, t)
+	α, Δx, Δy = p
+	Δx² = Δx^2
+	Δy² = Δy^2
+    n1, n2 = size(u)
+
+    # internal nodes
+    for j in 2:(n2 - 1)
+        for i in 2:(n1 - 1)
+            Δu[i, j] = (u[i+1, j]+u[i-1, j]-2u[i,j])/Δx² + (u[i,j+1] + u[i,j-1] - 2u[i, j])/Δy²
+        end
+    end
+
+    # left/right edges
+    for i in 2:(n1 - 1)
+        Δu[i, 1] = (u[i+1, 1] + u[i-1, 1]-2u[i,1])/Δx² + (u[i, 2] - u[i, 1])/Δy²
+        Δu[i, n2] = (u[i+1, n2]+u[i-1, n2]-2u[i,n2])/Δx² + (u[i, n2 - 1]-u[i, n2])/Δy²
+    end
+
+    # top/bottom edges
+    for j in 2:(n2 - 1)
+    	Δu[1, j] = (u[1, j+1]+u[1, j-1]-2u[1,j])/Δy² + (u[2, j]-u[1, j])/Δx²
+        Δu[n1, j] = (u[n1, j+1]+u[n1, j-1]-2u[n1,j])/Δy² + (u[n1-1, j]-u[n1, j])/Δx²
+    end
+
+    # corners
+    Δu[1, 1] = (u[2, 1]-u[1,1])/Δx² + (u[1, 2]-u[1, 1])/Δy²
+    Δu[n1, 1] = (u[n1-1, 1]-u[n1,1])/Δx² + (u[n1, 2]-u[n1, 1])/Δy²
+    Δu[1, n2] = (u[2, n2]-u[1,n2])/Δx² + (u[1, n2-1]-u[1, n2])/Δy²
+    Δu[n1, n2]= (u[n1-1, n2]-u[n1,n2])/Δx² + (u[n1, n2 - 1]-u[n1, n2])/Δy²
+	Δu *= α
+end
+
+# ╔═╡ 0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
+let
+	N = 31
+	u0 = zeros(N,N)
+	u0[1,1] = 1.0
+	u0[end,end] = 1.0
+	L = 1.0
+	dx = range(0,1,N)
+	dy = range(0,1,N)
+	p = (1, step(dx), step(dy))
+	problem = ODEProblem(laplacian_neumann, u0,(0, 5.0), p)
+	soln = solve(problem)
+	heatmap(dx, dy, soln(t_multi), aspect_ratio=:equal, xlims=(0,L), ylims=(0,L))
+	ii = [20, 9, 2]
+	jj = [20, 9, 20]
+	fig1 = scatter!(dx[ii],dy[jj], markersize=5, color=:green, markerstrokewidth=0, legend=false)
+	measurements = [soln(t_multi)[i,j] for (i,j) in zip(ii,jj)]
+	fig2 = plot(bar(["A","B","C"], measurements), ylabel="Heat", margin=5*Plots.mm)
+	layout = @layout([a b{0.2w}])
+    plot(fig1, fig2, layout = layout, legend = false)
+	
+end
+
+# ╔═╡ ca26a33f-17c3-4a91-b95c-75b83409705e
+md"""
+To illustrate how DiffEq.jl works, let's write a function computing the heat kernel. Let's give the option as well to use either Dirichlet or Neumann boundary conditions.
 """
 
 # ╔═╡ cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
-function heat_kernel(N, x, L)
+function heat_kernel(N, x, L=1.0, t=1.0, bc=:dirichlet)
 	u0 = zeros(N,N)
+	u0[x...] =1.0 # Initialize
+	dxy = range(0, L, N)
+	x = range(0,L,N)
+	y = x
+	p = (1.0, step(x), step(y))
+	if bc == :dirichlet
+		prob = ODEProblem(laplacian_dirichlet, u0, (0.0, t), p)
+	elseif bc == :neumann
+		prob = ODEProblem(laplacian_neumann, u0, (0.0, t), p)
+	else
+		error("BC not implemented")
+	end
+	return solve(prob)
+end
+
+# ╔═╡ e7080c15-ac7e-4106-8df4-65a668e39b83
+let
+	N = 31
 	mid = ceil(Int, N/2)
-	u0[x...] =1.0
-	dxy = range(-L, L, N)
-	x = dxy
-	y = dxy
-	p = (1, step(dxy))
-	prob = ODEProblem(laplacian, u0, (0.0, 0.5), p)
-	sol = solve(prob)
+	x = y = range(0,1,N)
+	L = 1.0
+	heat_sol = heat_kernel(N, (mid, mid), L, 5.0)
+	cfunc(x) = (0.0, max(maximum(x), 0.001))
+	heatmap(x,y,heat_sol(t_kernel), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(0,L), ylims=(0,L), background_color_subplot=false, clims=cfunc, size=(400,400))
 end
 
 # ╔═╡ 2e4e7cf6-0034-4992-9ea0-f212b4111fc1
@@ -429,7 +466,7 @@ let
 	N = 31
 	L = 0.5
 	mid = (7,9)
-	heat_solution = heat_kernel(N, (7,9), L)
+	heat_solution = heat_kernel(N, (7,9), L, 5.0)
 	heat = heat_solution(t_varadhan)
 	dist_estimates = varadhan_formula(t_varadhan, heat)
 
@@ -444,28 +481,80 @@ let
 	fig3 = heatmap(1:N,1:N,dist_true, aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(1,N), ylims=(1,N), background_color_subplot=false, colormap=:viridis, title="True Distance")
 	fig4 = heatmap(1:N,1:N,relative_error, aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(1,N), ylims=(1,N), background_color_subplot=false, colormap=:viridis, title="Relative Error")
 	plot(fig1, fig2, fig3, fig4, label=(1,2,3,4))
-
 end
 
 # ╔═╡ 2a77d78c-1b8a-4690-9024-46a6794d8efd
 md"""
 ### Computing Gradients
-The next step is to take the gradient of the $h$. Defining the discrete gradient matches   of the partial derivatives to look like. The gradient is described by the partial derivatives for $x$ and $y$
+The next step is to take the gradient of the $h$. The discrete gradient is defined similarly.
 
-$$\frac{h[x+1]-h[t]}{dx}$$
-Indeed observe that
-h(t)
+$\begin{align}
+\frac{\partial}{\partial x}h(a+dx,b) = h(a,b)+\frac{\partial}{\partial x}h(x,y)dx+o((dx)^2)\\
+\frac{\partial}{\partial x}h(a-dx,b) = h(a,b)-\frac{\partial}{\partial x}h(x,y)dx+o((dx)^2)
+\end{align}$
+
+Combining terms yields
+
+$$\frac{\partial}{\partial x}h(x,y) \approx \frac{h(a+dx,b)-h(a-dx,b)}{2dx}$$
+
+Generally, the gradient field is a vector field and there are several equivalent ways of representing it for discrete structures. Here, the vector field is defined as a $\mathbb{R}^{\vert V\vert\times 2}$ matrix.
 """
 
 # ╔═╡ 7a7a67a7-7958-43bb-bf54-36b80ecdf1de
-let
-	#Vector field
+function ∇(h::Matrix)
+	N1, N2 = size(h)
+	grad = zeros(N1, N2,2)
+	for j in 2:(N2 - 1)
+        for i in 2:(N1 - 1)
+            grad[i,j,1] = (h[i,j+1]-h[i,j-1])/2
+			grad[i,j,2] = (h[i+1,j]-h[i-1,j])/2
+        end
+    end
+
+    # left/right edges
+    for i in 2:(N1 - 1)
+        grad[i,1,1] = (h[i,2] - h[i,1])
+		grad[i,1,2] = (h[i+1,1]-h[i-1,1])/2
+		grad[i,N2,1] = (h[i,N2] - h[i,N2-1])
+		grad[i,N2,2] = (h[i+1,N2]-h[i-1,N2])/2
+    end
+
+    # top/bottom edges
+    for j in 2:(N2 - 1)
+		grad[1,j,1] = (h[1,j+1] - h[1,j-1])/2
+		grad[1,j,2] = h[2,j]-h[1,j]
+		grad[N1,j,1] = (h[N1,j+1] - h[N1,j-1])/2
+		grad[N1,j,2] = (h[N1,j]-h[N1-1,j])/2
+    end
+
+    # corners
+	grad[1,1,:] = [h[1,2]-h[1,1], h[2,1]-h[1,1]] 
+	grad[end,1,:] = [h[end,2]-h[end,1], h[end,1] - h[end-1,1]]
+	grad[1,end,:] = [h[1,end]-h[1,end-1], h[2,end]-h[1,end]]
+	grad[end,end,:] = [h[end,end]-h[end, end-1], h[end,end]-h[end-1,end]]
+	return grad
 end
 
-# ╔═╡ 89c89069-16f2-47d1-a36b-ea1101889f17
-md"""
-Generally, the gradient field is a vector field and there are several equivalent ways of representing it for discrete structures. Here, the vector field is defined as a $\mathbb{R}^{\vert V\vert\times 2}$ matrix.
-"""
+# ╔═╡ 2415e55d-bed0-4050-893e-b6a7af00ef45
+@bind t_grad Slider(range(1e-6,2,101), show_value=true, default=0.5)
+
+# ╔═╡ 160902db-e0b9-4d48-8fcb-41dbeaf429e8
+let
+	N = 31
+	L = 1.0
+	h = heat_kernel(N, (16,16), L, 2.0, :dirichlet)
+	heat = h(t_grad)
+	# display(heat)
+	meshgrid(x, y) = (repeat(x, outer=length(y)), repeat(y, inner=length(x)))
+	grad = ∇(heat)
+	# display(grad)
+	grad = grad./sqrt.(sum(grad.^2, dims=3)) # Normalize
+	x,y = meshgrid(1:31, 1:31)
+	tx = vec(grad[:,:,1]')
+	ty = vec(grad[:,:,2]')
+	heatmap(1:N, 1:N, heat, xlims=(1,N), ylims=(1,N),aspect_ratio=:equal, ticks=false)
+	quiver!(x, y, quiver=(tx, ty))
+end
 
 # ╔═╡ 7c9b744e-72cd-449e-8228-a25b5c845233
 md"""
@@ -487,6 +576,10 @@ $$\nabla \cdot X = Lu$$
 
 Notice that $\nabla\cdot X\in \mathbb{R}^{\vert V\vert}$, so as soon as we find a way to compute the "discrete div", the only thing left to do is to solve for $u$ as a system of linear equations!
 """
+
+# ╔═╡ 4c0e3f35-34d0-43a1-b110-6532decf2c86
+let
+end
 
 # ╔═╡ 71b24653-c6e2-4539-b8cc-082b3d838da7
 md"""
@@ -556,7 +649,7 @@ where $w_{ij}=\cot \alpha_i + \cot \alpha_j$. The figure below defines $\alpha_i
 
 # ╔═╡ 5bcf708c-8dc2-4a2d-a284-c17db2ea8b9a
 md"""
-This is actually referred to as the *unweighted* version. The weighted version incorporates the vertex-based areas to weight the entries of $L$ [^6]. Vertices that amass a larger area need to be weighted down whereas vertices that cover little area are upweighted. Concretely, we define a mass matrix $A=\text{diag}(a)$ where $a\in\mathbb{R}^{\vert V\vert}$ are the vertex-based areas. The true cotangent Laplacian is then $A^{−1}L$.
+This is actually referred to as the *unweighted* version. The weighted version incorporates the vertex-based areas to weight the entries of $L$ [^7]. Vertices that amass a larger area need to be weighted down whereas vertices that cover little area are upweighted. Concretely, we define a mass matrix $A=\text{diag}(a)$ where $a\in\mathbb{R}^{\vert V\vert}$ are the vertex-based areas. The true cotangent Laplacian is then $A^{−1}L$.
 """
 
 # ╔═╡ 9dd097b6-5f82-4fbe-b0d1-86756b7747d2
@@ -634,8 +727,9 @@ md"""
 [^2]: We will address how to simulate heat in a later section.
 [^3]: These plots were generated using the Fast Marching Method, another algorithm to approximate geodesics. The down side of the Fast Marching Method - and one of the original motiviations for the Heat Method - is that is is slow and not parallelizable. Code credit for the plots goes to [ffevotte](https://github.com/ffevotte). Check out [Eikonal.jl](https://github.com/triscale-innov/Eikonal.jl) for other nifty applications. 
 [^4]: A friend of mine considers this to be the most based PDE of all PDEs.
-[^5]: Thermal diffusivity is assumed to be $1$. For an introduction on the heat equation, check [https://web.stanford.edu/class/math220b/handouts/heateqn.pdf](https://web.stanford.edu/class/math220b/handouts/heateqn.pdf).
-[^6]: Wait vertex area? How does a vertex have an area? Here you can consider the barycentric area - the sum of the areas of the faces adjacent to the vertex divided by $3$.
+[^5]: Thermal diffusivity is assumed to be $1$. For an introduction on the heat equation, check these [notes](https://web.stanford.edu/class/math220b/handouts/heateqn.pdf).
+[^6]: Adapted from [this SciML tutorial](https://docs.sciml.ai/DiffEqDocs/stable/examples/beeler_reuter/).
+[^7]: Wait vertex area? How does a vertex have an area? Here you can consider the barycentric area - the sum of the areas of the faces adjacent to the vertex divided by $3$.
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -3015,14 +3109,13 @@ version = "1.4.1+0"
 # ╟─0350b1d6-4245-4b86-8b45-be9c00a16c77
 # ╟─e7080c15-ac7e-4106-8df4-65a668e39b83
 # ╟─ac43bbab-3014-4ece-b738-157e6367f734
-# ╠═387f2124-1802-405f-8d6e-3cfdcefe2f46
-# ╟─3a23522e-d7d6-4461-bd33-878e1c823ea6
+# ╠═3a23522e-d7d6-4461-bd33-878e1c823ea6
 # ╠═0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
 # ╟─7564b349-5d51-44a0-b78a-654cd1bbfb61
 # ╟─96fdedc9-3adf-4e46-9a50-d0b38bd38caf
 # ╠═c89ce545-5229-418e-a174-e2e4eddc1115
 # ╟─2dad5bf2-ac9c-4767-ac37-3abd252f338a
-# ╟─c814f0d2-cbb0-4db9-9499-993d51f42356
+# ╠═c814f0d2-cbb0-4db9-9499-993d51f42356
 # ╠═2e4e7cf6-0034-4992-9ea0-f212b4111fc1
 # ╟─e1c19aea-d671-4c01-8bcf-119e7abb295f
 # ╟─54c232ba-1175-40a3-b5a9-729450905e9f
@@ -3034,14 +3127,18 @@ version = "1.4.1+0"
 # ╠═d7ccc528-a811-4c31-8d64-fa2ce1e813cb
 # ╟─e56e6e62-5f38-467d-83bd-daaf4a968044
 # ╟─47e4da81-2c79-44bc-8d87-a9a0f2e45d4e
-# ╠═47b00e38-83d1-4888-baee-662bd716827c
-# ╠═37c582f8-c6fd-4aff-acc8-2bb8e8fa529c
-# ╠═3ce304a9-3dfd-42f1-b3cf-308b6ce3cbac
+# ╟─47b00e38-83d1-4888-baee-662bd716827c
+# ╟─387f2124-1802-405f-8d6e-3cfdcefe2f46
+# ╟─3ce304a9-3dfd-42f1-b3cf-308b6ce3cbac
+# ╟─ff09b1b2-3990-4bc7-8f6b-962e2ecfee3d
+# ╟─ca26a33f-17c3-4a91-b95c-75b83409705e
 # ╠═cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
-# ╠═2a77d78c-1b8a-4690-9024-46a6794d8efd
+# ╟─2a77d78c-1b8a-4690-9024-46a6794d8efd
 # ╠═7a7a67a7-7958-43bb-bf54-36b80ecdf1de
-# ╠═89c89069-16f2-47d1-a36b-ea1101889f17
-# ╠═7c9b744e-72cd-449e-8228-a25b5c845233
+# ╟─2415e55d-bed0-4050-893e-b6a7af00ef45
+# ╟─160902db-e0b9-4d48-8fcb-41dbeaf429e8
+# ╟─7c9b744e-72cd-449e-8228-a25b5c845233
+# ╠═4c0e3f35-34d0-43a1-b110-6532decf2c86
 # ╟─71b24653-c6e2-4539-b8cc-082b3d838da7
 # ╠═e48d51a3-debc-4339-84fe-20ee9613e808
 # ╟─9a0aa371-9fbf-493f-ba4e-cb0801c2d5ef
