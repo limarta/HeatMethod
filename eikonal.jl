@@ -17,3 +17,9 @@ march!(solver, verbose=true)
 contour(1:(tsize+1), 1:(tsize+1), solver.t, levels=30,
         aspect_ratio=1, c=:coolwarm, size=(800, 600), ticks=false, framestyle=:box,
         title = "W", xlims=(1,(tsize+1)), ylims=(1,(tsize+1)))
+
+for i=1:10
+    for j=1:10
+        println(i,j)
+    end
+end

@@ -157,7 +157,7 @@ How do we use heat to produce a notion of distance? For now we will simplify the
 """
 
 # ╔═╡ 0350b1d6-4245-4b86-8b45-be9c00a16c77
-md"""t =  $(@bind t_viz PlutoUI.Slider(range(0,1,101), show_value=true))"""
+md"""t =  $(@bind t_viz PlutoUI.Slider(range(0,20,101), show_value=true))"""
 
 # ╔═╡ ac43bbab-3014-4ece-b738-157e6367f734
 md"""
@@ -166,10 +166,85 @@ Notably, the amount of heat at a given point on the plate is tied to how long it
 The next example shows a more complicated setup with *two* source points. In the multisource problem, the distance of the geodesics is the shortest path from any of the source points. The plot on the right shows heat measurements for three different locations. Can you map each dot to the correct bar?
 """
 
+# ╔═╡ 387f2124-1802-405f-8d6e-3cfdcefe2f46
+function laplacian_dirichlet(Δu,u,p,t)
+	α, Δx,Δy = p
+    N1, N2 = size(u)
+	Δx² = Δx
+	Δy² = Δy
+    for j in 2:(N2-1)
+        for i in 2:(N1-1)
+            Δu[i, j] = 
+				(u[i+1, j] + u[i-1, j] -2u[i,j]) / Δx² + 
+				(u[i, j+1] + u[i, j-1] -2u[i, j])/ Δy²
+        end
+    end
+
+    # left/right edges
+    for i in 2:(N1 - 1)
+        Δu[i, 1] = (u[i+1, 1] + u[i-1, 1] -2u[i,1])/Δx² + (u[i, 2] - 2u[i, 1])/Δy²
+        Δu[i, N2] = (u[i+1, N2] + u[i-1, N2] -2u[i,N2])/Δx² + (u[i, N2-1] - 2u[i, N2])/Δy²
+    end
+
+    # top/bottom edges
+    for j in 2:(N2-1)
+        Δu[1, j] = (u[1, j+1] + u[1, j-1] - 2u[1,j])/Δx² + (u[2, j] - 2u[1, j])/Δy²
+        Δu[N1, j] = (u[N1, j+1] + u[N1, j-1] -2u[N1,j])/Δx² + (u[N1-1, j] - 2u[N1, j])/Δy²
+    end
+
+    # corners
+    Δu[1, 1] = (u[2, 1]-2u[1,1])/Δx² + (u[1, 2]-2u[1, 1])/Δy²
+    Δu[N1, 1] = (u[N1-1, 1]-2u[N1,1])/Δx² + (u[N1, 2]-2u[N1, 1])/Δy²
+    Δu[1, N2] = (u[2, N2] -2u[1,N2])/Δx²+ (u[1, N2 - 1]-2u[1,N2])/Δy²
+    Δu[N1, N2] = (u[N1 - 1, N2] -2u[N1,N2])/Δx²+ (u[N1, N2 - 1]-2u[N1, N2])/Δy²
+	Δu .*= α
+	Δu
+end
+
+# ╔═╡ e7080c15-ac7e-4106-8df4-65a668e39b83
+let
+	N = 31
+	u0 = zeros(N,N)
+	mid = ceil(Int, N/2)
+	u0[mid,mid] =300.0
+	L = 1.0
+	x = range(0, L, N)
+	y = range(0, L, N)
+	p = (1, step(x), step(y))
+	prob = ODEProblem(laplacian_dirichlet, u0, (0.0, 20.0), p)
+	sol = solve(prob)
+	cfunc(x) = (0.0, max(maximum(x), 0.001))
+	heatmap(x,y,sol(t_viz), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(0,L), ylims=(0,L), background_color_subplot=false, clims=cfunc, size=(400,400))
+end
+
 # ╔═╡ 3a23522e-d7d6-4461-bd33-878e1c823ea6
 md"""
 t = $(@bind t_multi PlutoUI.Slider(0:0.001:0.1, show_value=true, default=0.02))
 """
+
+# ╔═╡ 0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
+let
+	N = 31
+	u0 = zeros(N,N)
+	mid = ceil(Int, N/2)
+	u0[2,2] = 1.0
+	u0[end,end] = 1.0
+	L = 1.0
+	dx = range(0,1,N)
+	dy = range(0,1,N)
+	p = (0.1, step(dx), step(dy))
+	problem = ODEProblem(laplacian_dir, u0,(0, 1.0), p)
+	soln = solve(problem)
+	heatmap(dx, dy, soln(t_multi), aspect_ratio=:equal, xlims=(0,L), ylims=(0,L))
+	ii = [20, 9, 2]
+	jj = [20, 9, 20]
+	fig1 = scatter!(dx[ii],dy[jj], markersize=5, color=:green, markerstrokewidth=0, legend=false)
+	measurements = [soln(t_multi)[i,j] for (i,j) in zip(ii,jj)]
+	fig2 = plot(bar(["A","B","C"], measurements), ylabel="Heat", margin=5*Plots.mm)
+	layout = @layout([a b{0.2w}])
+    plot(fig1, fig2, layout = layout, legend = false)
+	
+end
 
 # ╔═╡ 7564b349-5d51-44a0-b78a-654cd1bbfb61
 md"""
@@ -321,76 +396,20 @@ L_{ij} = &\frac{[f(i+1,j)-f(i,j)] + [f(i-1,j) - f(i,j)]}{(dx)^2}\\
 &=\frac{\sum_{k\in N(i,j)}[f(k)-f(i,j)]}{(dx)^2}
 \end{align}$
 
-where the last equality occurs when $dx=dy$. This is usually called the "five-point" Laplacian since it requires a cross shape to evaluate.
+where the last equality occurs when $dx=dy$. This is usually called the "five-point stencil" Laplacian since it requires a cross shape to evaluate.
 
-For cells on the boundary, boundary conditions resolve ambiguities. There are two common ones, Dirichlet and Neumann. For Dirichlet, values at the boundary are fixed (e.g. $f(s)=c$) where as for Neumann boundary conditions, the partial derivatives are fixed (e.g. $f_x(s) = c$). The paper focuses on both conditions, but we focus on Dirichlet for brevity. Most of the code would be identical otherwise.
+To make sense of the boundary cells, the boundary conditions are used. There are two common ones, Dirichlet and Neumann. For Dirichlet, values at the boundary are fixed to $0$ (e.g. $f(s) = 0$) whereas for Neumann boundary conditions, the partial derivatives are fixed (e.g. $f_x(s) = c$).
 
-First we will define a loop computing this Laplacian.
+First we define the Laplacian with Dirichlet boundary conditions.
 """
 
-# ╔═╡ 557ec9ad-5d1b-43a8-af0f-fd46077b840d
-function laplacian(du,u,p,t)
-	alpha, dx = p
-	N,_ = size(du)
-	limit(a) = (a == 0) ? 1 : (a == N+1 ? N : a)
-	for I in CartesianIndices(du)
-		x = I[1]
-		y = I[2]
-		dx1, dx2, dy1, dy2 = limit(x-1), limit(x+1), limit(y-1), limit(y+1)
-		du[I] = alpha * (u[dx1, y] + u[dx2,y] + u[x,dy1] + u[x,dy2] - 4*u[I]) / 		dx^2
-	end
-end
+# ╔═╡ 37c582f8-c6fd-4aff-acc8-2bb8e8fa529c
 
-# ╔═╡ e7080c15-ac7e-4106-8df4-65a668e39b83
-let
-	N = 31
-	u0 = zeros(N,N)
-	mid = ceil(Int, N/2)
-	u0[mid,mid] =10.0
-	L = 0.1
-	dxy = range(-L, L, N)
-	x = dxy
-	y = dxy
-	p = (0.001, step(dxy))
-	prob = ODEProblem(laplacian, u0, (0.0, 2.0), p)
-	sol = solve(prob)
-	cfunc(x) = (0.0, maximum(x))
-	p1 = heatmap(x,y,sol(t_viz), aspect_ratio=:equal, framestyle=:box, ticks=false, xlims=(-L,L), ylims=(-L,L), background_color_subplot=false, clims=cfunc)
-	plot!(size=(400,400))
-end
 
-# ╔═╡ 0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
-let
-	function initialize_grid(dx,dy)
-	    grid = zeros(length(dx),length(dy))
-	    grid[1, 1] = grid[end,end] = 10.0
-	    grid
-	end
-	N = 21
-	dx = range(-1,1,N)
-	dy = range(-1,1,N)
-	u0_multi = initialize_grid(dx,dy)
-	problem = ODEProblem(laplacian, u0_multi,(0, 10.0), (10, step(dx)))
-	soln = solve(problem)
-	heatmap(dx, dy, soln(t_multi), aspect_ratio=:equal, xlims=(-1,1), ylims=(-1,1))
-	ii = [20, 9, 2]
-	jj = [20, 9, 20]
-	fig1 = scatter!(dx[ii],dy[jj], markersize=5, color=:green, markerstrokewidth=0, legend=false)
-	measurements = [soln(t_multi)[i,j] for (i,j) in zip(ii,jj)]
-	fig2 = plot(bar(["A","B","C"], measurements), ylabel="Heat", margin=5*Plots.mm)
-	layout = @layout([a b{0.2w}])
-    plot(fig1, fig2, layout = layout, legend = false)
-	
-end
-
-# ╔═╡ a9bd0620-2f80-43e8-b83a-c0102e6a2b4d
-function init_heat_map(dxy)
-	    N = length(dxy)
-	    u = zeros(N,N)
-	    mid = ceil(Int, N/2)
-	    u[mid,mid] =1.0
-	    u
-	end
+# ╔═╡ 3ce304a9-3dfd-42f1-b3cf-308b6ce3cbac
+md"""
+Using Neumann is slightly different:
+"""
 
 # ╔═╡ cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
 function heat_kernel(N, x, L)
@@ -427,12 +446,6 @@ let
 	plot(fig1, fig2, fig3, fig4, label=(1,2,3,4))
 
 end
-
-# ╔═╡ 3faa8490-10f2-47f5-af38-d832401d5487
-md"""
-
-To interpret the solutions to this equation, boundary conditions are often employed such as Dirichlet or Neumann on the edges of the square. 
-"""
 
 # ╔═╡ 2a77d78c-1b8a-4690-9024-46a6794d8efd
 md"""
@@ -3002,8 +3015,9 @@ version = "1.4.1+0"
 # ╟─0350b1d6-4245-4b86-8b45-be9c00a16c77
 # ╟─e7080c15-ac7e-4106-8df4-65a668e39b83
 # ╟─ac43bbab-3014-4ece-b738-157e6367f734
+# ╠═387f2124-1802-405f-8d6e-3cfdcefe2f46
 # ╟─3a23522e-d7d6-4461-bd33-878e1c823ea6
-# ╟─0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
+# ╠═0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
 # ╟─7564b349-5d51-44a0-b78a-654cd1bbfb61
 # ╟─96fdedc9-3adf-4e46-9a50-d0b38bd38caf
 # ╠═c89ce545-5229-418e-a174-e2e4eddc1115
@@ -3020,11 +3034,10 @@ version = "1.4.1+0"
 # ╠═d7ccc528-a811-4c31-8d64-fa2ce1e813cb
 # ╟─e56e6e62-5f38-467d-83bd-daaf4a968044
 # ╟─47e4da81-2c79-44bc-8d87-a9a0f2e45d4e
-# ╟─47b00e38-83d1-4888-baee-662bd716827c
-# ╠═557ec9ad-5d1b-43a8-af0f-fd46077b840d
-# ╠═a9bd0620-2f80-43e8-b83a-c0102e6a2b4d
+# ╠═47b00e38-83d1-4888-baee-662bd716827c
+# ╠═37c582f8-c6fd-4aff-acc8-2bb8e8fa529c
+# ╠═3ce304a9-3dfd-42f1-b3cf-308b6ce3cbac
 # ╠═cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
-# ╠═3faa8490-10f2-47f5-af38-d832401d5487
 # ╠═2a77d78c-1b8a-4690-9024-46a6794d8efd
 # ╠═7a7a67a7-7958-43bb-bf54-36b80ecdf1de
 # ╠═89c89069-16f2-47d1-a36b-ea1101889f17
