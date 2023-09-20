@@ -503,36 +503,26 @@ Generally, the gradient field is a vector field and there are several equivalent
 # ╔═╡ 7a7a67a7-7958-43bb-bf54-36b80ecdf1de
 function ∇(h::Matrix)
 	N1, N2 = size(h)
-	grad = zeros(N1, N2,2)
-	for j in 2:(N2 - 1)
-        for i in 2:(N1 - 1)
-            grad[i,j,1] = (h[i,j+1]-h[i,j-1])/2
-			grad[i,j,2] = (h[i+1,j]-h[i-1,j])/2
+	gradx = zeros(N1, N2+1)
+	grady = zeros(N1+1, N2)
+	for j in 2:N2
+        for i in 1:N1
+            gradx[i,j] = h[i,j]-h[i,j-1]
         end
     end
+	# left/right edges
+    gradx[:,1] = h[:,1]
+	gradx[:,end] = -h[:,end]
 
-    # left/right edges
-    for i in 2:(N1 - 1)
-        grad[i,1,1] = (h[i,2] - h[i,1])
-		grad[i,1,2] = (h[i+1,1]-h[i-1,1])/2
-		grad[i,N2,1] = (h[i,N2] - h[i,N2-1])
-		grad[i,N2,2] = (h[i+1,N2]-h[i-1,N2])/2
-    end
-
-    # top/bottom edges
-    for j in 2:(N2 - 1)
-		grad[1,j,1] = (h[1,j+1] - h[1,j-1])/2
-		grad[1,j,2] = h[2,j]-h[1,j]
-		grad[N1,j,1] = (h[N1,j+1] - h[N1,j-1])/2
-		grad[N1,j,2] = (h[N1,j]-h[N1-1,j])/2
-    end
-
-    # corners
-	grad[1,1,:] = [h[1,2]-h[1,1], h[2,1]-h[1,1]] 
-	grad[end,1,:] = [h[end,2]-h[end,1], h[end,1] - h[end-1,1]]
-	grad[1,end,:] = [h[1,end]-h[1,end-1], h[2,end]-h[1,end]]
-	grad[end,end,:] = [h[end,end]-h[end, end-1], h[end,end]-h[end-1,end]]
-	return grad
+	for j in 1:N2
+		for i in 2:N1
+			grady[i,j] = h[i,j] - h[i-1,j]
+		end
+	end
+	grady[1,:] = h[1,:]
+	grady[end,:] = -h[end,:]
+	
+	return gradx, grady
 end
 
 # ╔═╡ 2415e55d-bed0-4050-893e-b6a7af00ef45
@@ -540,20 +530,20 @@ end
 
 # ╔═╡ 160902db-e0b9-4d48-8fcb-41dbeaf429e8
 let
-	N = 31
+	N = 17
 	L = 1.0
 	h = heat_kernel(N, (16,16), L, 2.0, :dirichlet)
 	heat = h(t_grad)
-	# display(heat)
 	meshgrid(x, y) = (repeat(x, outer=length(y)), repeat(y, inner=length(x)))
-	grad = ∇(heat)
-	# display(grad)
-	grad = grad./sqrt.(sum(grad.^2, dims=3)) # Normalize
-	x,y = meshgrid(1:31, 1:31)
-	tx = vec(grad[:,:,1]')
-	ty = vec(grad[:,:,2]')
+	gradx, grady = ∇(heat)
+	# grad = grad./sqrt.(sum(grad.^2, dims=3)) # Normalize
+	x,y = meshgrid(1:N+1, 1:N)
+	tx = 0.4vec(gradx')
 	heatmap(1:N, 1:N, heat, xlims=(1,N), ylims=(1,N),aspect_ratio=:equal, ticks=false)
-	quiver!(x, y, quiver=(tx, ty))
+	quiver!(x,y, quiver=(tx, zeros(length(tx))))
+	x,y = meshgrid(1:N+1, 1:N)
+	ty = vec(grady')
+	quiver!(x, y, quiver=(zeros(length(ty)), ty))
 end
 
 # ╔═╡ 7c9b744e-72cd-449e-8228-a25b5c845233
@@ -644,17 +634,34 @@ w_{ij} & \text{if }i\neq j\\
 where $w_{ij}=\cot \alpha_i + \cot \alpha_j$. The figure below defines $\alpha_i$ and $\alpha_j$ for a pair of opposing vertices.
 """
 
-# ╔═╡ 2c01678b-2501-4cb1-b1ba-9e6533a8a364
-# Figure
+# ╔═╡ 9dd097b6-5f82-4fbe-b0d1-86756b7747d2
+function cotlaplacian(V,F)
+    nv = size(V)[2]
+    nf = size(F)[2]
+    #For all 3 shifts of the roles of triangle vertices
+    #to compute different cotangent weights
+    cots = zeros(nf, 3)
+    for perm in [(1,2,3), (2,3,1), (3,1,2)]
+        i, j, k = perm
+        u = V[:,F[i,:]] - V[:, F[k,:]]
+        v = V[:, F[j,:]] - V[:, F[k,:]]
+        cotAlpha = vec(vdot(u,v; dims=1)) ./ norm.(eachcol(multicross(u,v)))
+        cots[:,i] = cotAlpha
+    end
+
+    I = F[1,:]; J = F[2,:]; K = F[3,:];
+
+    L = sparse([I;J;K], [J;K;I], [cots[:,1];cots[:,2];cots[:,3]], nv, nv)
+    L = L + L'
+    rowsums = vec(sum(L,dims=2))
+    L = spdiagm(0 => rowsums) - L
+    return 0.5 * L
+end
 
 # ╔═╡ 5bcf708c-8dc2-4a2d-a284-c17db2ea8b9a
 md"""
-This is actually referred to as the *unweighted* version. The weighted version incorporates the vertex-based areas to weight the entries of $L$ [^7]. Vertices that amass a larger area need to be weighted down whereas vertices that cover little area are upweighted. Concretely, we define a mass matrix $A=\text{diag}(a)$ where $a\in\mathbb{R}^{\vert V\vert}$ are the vertex-based areas. The true cotangent Laplacian is then $A^{−1}L$.
+This is actusally referred to as the *unweighted* version. The weighted version incorporates the vertex-based areas to weight the entries of $L$ [^7]. Vertices that amass a larger area need to be weighted down whereas vertices that cover little area are upweighted. Concretely, we define a mass matrix $A=\text{diag}(a)$ where $a\in\mathbb{R}^{\vert V\vert}$ are the vertex-based areas. The weighted cotangent Laplacian is then $A^{−1}L$.
 """
-
-# ╔═╡ 9dd097b6-5f82-4fbe-b0d1-86756b7747d2
-function cotlaplacian(V,F)
-end
 
 # ╔═╡ 3ed68b8f-db59-40fe-87ef-8df03f81f9df
 md"""
@@ -672,14 +679,78 @@ $$(\nabla\cdot X)_v = \frac{1}{2}\sum\limits_{j} \cot\theta_1(e_2\cdot X_j) + \c
 where $X$ is the vector field and $j$ is a sum over all the adjacent triangles to a vertex $v$. The angles $\theta_1$ and $\theta_2$ are the angles opposite of vertex $v$ on the triangle. The edges $e_1$ and $e_2$ eminate from $v$ and end at the opposite vertices. Take note of the ordering and see Figure .
 """
 
+# ╔═╡ f7914d06-c58e-4033-b895-9c069ec6eb4e
+function face_area_normals(V,F)
+    T = V[:,F]
+    u = T[:,2,:] - T[:,1,:]
+    v = T[:,3,:] - T[:,1,:]
+    return 0.5 * multicross(u,v)
+end
+
+# ╔═╡ dc7eece7-942a-491a-9eaa-033c19112d32
+function face_normals(V,F)
+    A = face_area_normals(V,F)
+    normalize!.(eachcol(A))
+    A
+end
+
+# ╔═╡ 321527d2-068c-4e85-8947-f6d1d6fe4fd3
+face_area(V,F) = norm.(eachcol(face_area_normals(V,F)))
+
+# ╔═╡ f324cbad-1f68-4359-9ea4-8eb8f13b27e1
+function face_grad(V,F)
+    A = face_area(V,F)
+    N = face_normals(V,F)
+
+    u = repeat(F[1,:], inner=3)
+    v = repeat(F[2,:], inner=3)
+    w = repeat(F[3,:], inner=3)
+    uv = V[:,F[2,:]] - V[:,F[1,:]]
+    vw = V[:,F[3,:]] - V[:,F[2,:]]
+    wu = V[:,F[1,:]] - V[:,F[3,:]]
+    J = 1:3*mesh.nf
+    G2 = cross.(eachcol(N), eachcol(wu)) ./ A
+    G1 = cross.(eachcol(N), eachcol(vw)) ./ A
+    G3 = cross.(eachcol(N), eachcol(uv)) ./ A
+    G1 = collect(Iterators.flatten(G1))
+    G2 = collect(Iterators.flatten(G2))
+    G3 = collect(Iterators.flatten(G3))
+    g = sparse([J;J;J], [u;v;w], [G1; G2; G3], 3*mesh.nf, mesh.nv)
+    g ./= 2
+    return g
+end
+
+# ╔═╡ b7b393a9-e6f6-48ea-a4d5-d3e327f6bc18
+function div(V,F)
+    # ∇⋅ is |V|×3|F|
+    uv = V[:,F[2,:]] - V[:,F[1,:]]
+    vw = V[:,F[3,:]] - V[:,F[2,:]]
+    wu = V[:,F[1,:]] - V[:,F[3,:]]
+    cotan = -[sum(uv.*wu; dims=1); sum(vw.*uv; dims=1); sum(wu.*vw; dims=1)]
+    s = [norm.(cross.(eachcol(uv), eachcol(wu)));;
+        norm.(cross.(eachcol(vw), eachcol(uv)));;
+        norm.(cross.(eachcol(wu), eachcol(vw)))]'
+    cotan ./= s
+
+    u = repeat(F[1,:], inner=3)
+    v = repeat(F[2,:], inner=3)
+    w = repeat(F[3,:], inner=3)
+    J = 1:3*mesh.nf
+    A = vec(-cotan[2,:]' .* wu + cotan[3,:]' .* uv)
+    B = vec(cotan[1,:]' .* vw - cotan[3,:]' .* uv)
+    C = vec(-cotan[1,:]' .* vw + cotan[2,:]' .* wu)
+    ∇ = sparse([u;v;w], [J;J;J], [A;B;C], mesh.nv, 3*mesh.nf)
+    ∇ ./= 2
+end
+
 # ╔═╡ 1e1b6bed-9224-4968-afb6-6bbc9d635191
 md"""
 ### Examples
 Now for some examples.
 """
 
-# ╔═╡ d11eade6-9a90-419f-b78c-0bb2d9f2d93d
-
+# ╔═╡ b18c2afe-855c-4dd4-858d-f50a8cdd92fd
+download("https://raw.githubusercontent.com/naucoin/VTKData/master/Data/bunny.ply")
 
 # ╔═╡ 611b3854-ba93-46d1-b270-4c6ddeea6585
 md"""
@@ -3136,7 +3207,7 @@ version = "1.4.1+0"
 # ╟─2a77d78c-1b8a-4690-9024-46a6794d8efd
 # ╠═7a7a67a7-7958-43bb-bf54-36b80ecdf1de
 # ╟─2415e55d-bed0-4050-893e-b6a7af00ef45
-# ╟─160902db-e0b9-4d48-8fcb-41dbeaf429e8
+# ╠═160902db-e0b9-4d48-8fcb-41dbeaf429e8
 # ╟─7c9b744e-72cd-449e-8228-a25b5c845233
 # ╠═4c0e3f35-34d0-43a1-b110-6532decf2c86
 # ╟─71b24653-c6e2-4539-b8cc-082b3d838da7
@@ -3147,12 +3218,16 @@ version = "1.4.1+0"
 # ╟─688712c4-b57f-49de-a1e9-3a3299eef60e
 # ╟─92b945aa-b19f-4732-963b-a3e8b42a6b02
 # ╟─d5b9c28b-e9fc-4e04-bf05-5b0b93da804e
-# ╠═2c01678b-2501-4cb1-b1ba-9e6533a8a364
-# ╠═5bcf708c-8dc2-4a2d-a284-c17db2ea8b9a
 # ╠═9dd097b6-5f82-4fbe-b0d1-86756b7747d2
-# ╠═3ed68b8f-db59-40fe-87ef-8df03f81f9df
+# ╟─5bcf708c-8dc2-4a2d-a284-c17db2ea8b9a
+# ╟─3ed68b8f-db59-40fe-87ef-8df03f81f9df
+# ╠═f7914d06-c58e-4033-b895-9c069ec6eb4e
+# ╠═dc7eece7-942a-491a-9eaa-033c19112d32
+# ╠═321527d2-068c-4e85-8947-f6d1d6fe4fd3
+# ╠═f324cbad-1f68-4359-9ea4-8eb8f13b27e1
+# ╠═b7b393a9-e6f6-48ea-a4d5-d3e327f6bc18
 # ╟─1e1b6bed-9224-4968-afb6-6bbc9d635191
-# ╠═d11eade6-9a90-419f-b78c-0bb2d9f2d93d
+# ╠═b18c2afe-855c-4dd4-858d-f50a8cdd92fd
 # ╟─611b3854-ba93-46d1-b270-4c6ddeea6585
 # ╟─070107d5-40e4-4f63-bdb9-9f315ebf18ba
 # ╟─948cee7b-2533-4693-a333-88231054ff83
