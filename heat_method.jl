@@ -610,10 +610,6 @@ If the volumetric definition is used, then the heat values measured would corres
 
 The Laplace-Beltrami (referred also as the Laplacian for short) operator is the 2D analog for surfaces embedded $\mathbb{R}^3$. Why is that? When considering meshes, they are often assumed to be manifolds, meaning that at any given point, the surface looks locally like a flat plane. So at a local scale, heat diffusion looks approximately the same as if we were simulating a flat surface. The generalization is defined as
 
-$$\Delta f = \nabla\cdot(\nabla f)$$
-
-or "div grad of $f$". Verify that this definition agrees with the Euclidean Laplacian.
-
 How would the discrete analog look for a mesh? A mesh consists of vertices and faces, and a function can be defined over its vertices or faces. Here, a heat function $u(v)$ is defined over the vertices $v\in \mathcal{M}$ which can be represented compactly as a $\mathbb{R}^{\vert V\vert}$ vector. So the Laplacian must take in a scalar field $f(v)\in \mathbb{R}^{\vert V\vert}$ and produce a new scalar field over the vertices. This implies that the shape of $\Delta$ is represented as a matrix, more precisely a $|V|\times |V|$ matrix. Like [convolution filters](https://en.wikipedia.org/wiki/Kernel_(image_processing)#Details), there are many proposed Laplacian matrices that seek to approximate the continuous Laplace-Beltrami operator. It turns out that no discrete Laplacian is able to satisfy all of the properties of the continuous one, so each matrix has its own pitfalls. Here we use a common one called the **cotangent Laplacian**.
 
 """
@@ -774,11 +770,46 @@ Equation (...) is referred to as foward-mode integration since we take the previ
 $$Ah_{t'} = (A+dt\cdot L)^{-1}h_t$$
 """
 
+# ╔═╡ 4513d343-80c2-48c9-b628-5df1fde04b76
+function heat_implicit(L, A, init; dt=0.001, steps=1)
+    M = spdiagm(A)
+    D = cholesky(M+dt*L)
+    heat = init
+    for t=1:steps
+        heat = D \ (M*heat)
+    end
+    return heat
+end
+
 # ╔═╡ 948cee7b-2533-4693-a333-88231054ff83
 md"""
 #### Spectral Mode
-Spectral mode uses the eigenfunctions of the Laplacian by exploiting linearity.
+So far computing heat flow has relied on simulations. Alternatively, we can appeal to theory to solve the heat equation. Normally, we need to find the *eigenfunctions* of the Laplacian subject to the boundary conditions. Specifically, $f$ is an eigenfunction if it satisfies the boundary conditions and $\Delta f = λf$. For heat diffusion with no source, the solutions to the heat equation are then $h(x,t) = e^{\lambda t}f(x)$. We can verify this by plugging it back into the PDE:
+
+$$\lambda e^{\lambda t}f(x) = e^{\lambda t}f''(x) = \lambda e^{\lambda t}f(x)$$
+
+The same logic applies to the discrete setting. Let $L$ be the Laplacian matrix. Then the eigenvalues and eigenvectors form a basis to the solutions to the PDE.
 """
+
+# ╔═╡ 3ac61216-5029-47b5-85e4-3fc27f879e52
+function heat_spectral(λ::Vector, ϕ::Matrix, init, t)
+    """
+    init - |V| or |V|×|C|
+    note that init may be a single vector or length(t) vectors. If it is a single vector, then heat is diffused for each time t. If it is
+    multiple vectors, then vector init[i] is diffused for time t[i]
+    c = ϕ'*(A .* init) .* exp.(-λ * t')
+    
+    If A is defined, then inner products are treated as A-inner products
+    """
+    c = ϕ'*(init) .* exp.(-λ * t')
+    heat = abs.(ϕ * c)
+end
+
+# ╔═╡ f798d3c7-278a-4c9b-aa89-1f8c2b94a938
+function heat_spectral(λ, ϕ, A, init, t)
+    c = ϕ' * (A*init) .* exp.(-λ * t')
+    ϕ * c
+end
 
 # ╔═╡ 54f1f6fe-acc1-4308-b5f9-1694de5dab7f
 md"""
@@ -3180,7 +3211,7 @@ version = "1.4.1+0"
 # ╟─0350b1d6-4245-4b86-8b45-be9c00a16c77
 # ╟─e7080c15-ac7e-4106-8df4-65a668e39b83
 # ╟─ac43bbab-3014-4ece-b738-157e6367f734
-# ╠═3a23522e-d7d6-4461-bd33-878e1c823ea6
+# ╟─3a23522e-d7d6-4461-bd33-878e1c823ea6
 # ╠═0bdff4e8-27ad-46ef-b9b3-a146d774cc6d
 # ╟─7564b349-5d51-44a0-b78a-654cd1bbfb61
 # ╟─96fdedc9-3adf-4e46-9a50-d0b38bd38caf
@@ -3230,7 +3261,10 @@ version = "1.4.1+0"
 # ╠═b18c2afe-855c-4dd4-858d-f50a8cdd92fd
 # ╟─611b3854-ba93-46d1-b270-4c6ddeea6585
 # ╟─070107d5-40e4-4f63-bdb9-9f315ebf18ba
-# ╟─948cee7b-2533-4693-a333-88231054ff83
+# ╠═4513d343-80c2-48c9-b628-5df1fde04b76
+# ╠═948cee7b-2533-4693-a333-88231054ff83
+# ╠═3ac61216-5029-47b5-85e4-3fc27f879e52
+# ╠═f798d3c7-278a-4c9b-aa89-1f8c2b94a938
 # ╟─54f1f6fe-acc1-4308-b5f9-1694de5dab7f
 # ╟─2a5ae2f3-f9a0-4ade-9307-f617a41e36ce
 # ╠═a9dfc324-03ec-4884-a19e-4371ac069e1b
