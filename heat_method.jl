@@ -43,15 +43,15 @@ end
 # ╔═╡ 7dc7f1eb-3e1f-4b75-8e4c-e3018b0259d6
 # Note to self: What is Gridap.jl?
 
-# ╔═╡ efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
-PlutoUI.TableOfContents(depth=5)
-
 # ╔═╡ edce4ccf-7be7-4b0d-98aa-c572eac3d0ad
 md"""
 # Introduction
 
 This notebook provides an overview of the Heat Method by Crane et al. used for geodesic computation [^1]. First we describe limitations with standard discretizations and shortest path algorithms and show the intuition behind the Heat Method. Then we provide some discretization details relevant to meshes and finally provide a Julia implementation. Originally this notebook was going to use pure Julia, but I think there is some value in highlighting some of the flagship packages in the ecosystem.
 """
+
+# ╔═╡ efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
+PlutoUI.TableOfContents(depth=5)
 
 # ╔═╡ 94ca9000-947d-44d2-8a6d-f9177c476345
 md"""### What are Geodesics?
@@ -560,7 +560,6 @@ let
 	heat = h(t_grad)
 	meshgrid(x, y) = (repeat(x, outer=length(y)), repeat(y, inner=length(x)))
 	gradx, grady = ∇(heat)
-	# grad = grad./sqrt.(sum(grad.^2, dims=3)) # Normalize
 	x,y = meshgrid(1:N+1, 1:N)
 	tx = 0.4vec(gradx')
 	Plots.heatmap(1:N, 1:N, heat, xlims=(1,N), ylims=(1,N),aspect_ratio=:equal, ticks=false)
@@ -822,7 +821,7 @@ end
 
 # ╔═╡ 860530d1-3f6c-4774-91be-01b7aec16f91
 begin
-	fig = Figure(resolution=(1500,1500))
+	fig = Figure(resolution=(2500,900))
 	ax1 = Axis3(fig[1,1], viewmode=:fit, aspect = (1, 1, 1), azimuth=0, elevation=0)
 	hidespines!(ax1)
 	hidedecorations!(ax1)
@@ -836,21 +835,21 @@ begin
 	heat = Observable(u0)
 	∇_bunny = face_grad(V,F);
 	Δ_bunny = div(V,F)
-	anchor_points = face_centers(V,F)[:,1:22:end]
+	anchor_points = face_centers(V,F)[:,1:20:end]
 	show_gradients = Observable(true)
-	heat_gradx = Observable(zeros(ceil(Int, size(F,2)/22)))
-	heat_grady = Observable(zeros(ceil(Int, size(F,2)/22)))
-	heat_gradz = Observable(zeros(ceil(Int, size(F,2)/22)))
+	heat_gradx = Observable(zeros(ceil(Int, size(F,2)/20)))
+	heat_grady = Observable(zeros(ceil(Int, size(F,2)/20)))
+	heat_gradz = Observable(zeros(ceil(Int, size(F,2)/20)))
 	geodesics = Observable(zeros(size(V,2)))
 end
 
-# ╔═╡ cbc43250-5168-4211-a92f-4f99209b07a0
-md"""t $(@bind t_bunny PlutoUI.Slider(1:200, default=10, show_value=true))"""
-
-# ╔═╡ 7c128a1d-c69f-4c06-9f57-b2061628e241
+# ╔═╡ ffdbb945-0e85-409a-9bd7-a5224f2724f9
 md"""
-v $(@bind v PlutoUI.Slider(1:1000, default=488, show_value=true))
+Drag the sliders and bunnies.
 """
+
+# ╔═╡ cbc43250-5168-4211-a92f-4f99209b07a0
+md"""t $(@bind t_bunny PlutoUI.Slider(1:200, default=10, show_value=true)) v1 $(@bind v1 PlutoUI.Slider(1:1000, default=488, show_value=true))   v2 $(@bind v2 PlutoUI.Slider(1:1000, default=488, show_value=true)) v3 $(@bind v3 PlutoUI.Slider(1:1000, default=488, show_value=true))"""
 
 # ╔═╡ 450ad839-16ce-406e-9269-665dba06937e
 md"""Show Gradient Field$(@bind has_grad PlutoUI.CheckBox())"""
@@ -863,9 +862,13 @@ let
 	fig
 end
 
-# ╔═╡ 611b3854-ba93-46d1-b270-4c6ddeea6585
+# ╔═╡ 92915d09-067f-4ea6-a6a9-0f519c9ea84d
 md"""
-# Asides
+# Appendix
+"""
+
+# ╔═╡ 7d9c0d8d-e52f-44b9-ae77-bbda953c498c
+md"""
 ### Handwriting DiffEq.jl
 
 There are two common ways to solve the heat equation if given the operator $L$. The first one is an iterative approach that uses the entries of $L$ to update the solution like how computing with a stencil works. The second method solves the equation in a manner similar to what a person would do to solve a PDE like the heat equation by hand - by finding the eigenfunctions.
@@ -879,22 +882,20 @@ Back in calculus, we used Euler's method to solve the solutions to a differentia
 $$-A^{-1}Lh_t \approx \frac{h_{t'}-h_t}{dt}$$
 or
 
-$$h_{t'} = h_t-dt\cdot A^{-1}Lh_t$$
+$$h_{t'} = A^{-1}(A-dtL)h_t$$
 
-Equation (...) is referred to as foward-mode integration since we take the previously known value and use the derivative to update it. This works and is generally fast, but I want to point out a slight variant that happens to be more stable. It turns out that if we replace $Lh_t$ and $Lh_{t'}$ as our choice of the derivative, then this is referred to as semi-implicit integration. The update rule then becomes
-$$Ah_{t'} = (A+dt\cdot L)^{-1}h_t$$
+Equation (...) is referred to as foward-mode integration since we take the previously known value and use the derivative to update it. This works and is generally fast, but I want to point out a slight variant that happens to be more stable. It turns out that if we replace $Lh_t$ and $Lh_{t'}$ as our choice of the derivative, then this is referred to as semi-implicit integration. The step is instead
+
+$$A h_t=(A+Ldt)h_{t'}$$
 """
 
 # ╔═╡ 4513d343-80c2-48c9-b628-5df1fde04b76
 function heat_implicit(L, A, init; dt=0.001, steps=1)
     M = spdiagm(A)
     D = cholesky(M+dt*L)
-	# D = (M+dt*L)
-	# D = I+dt*L
     heat = init
     for t=1:steps
         heat = D \ (M*heat)
-		# heat = D \ heat
     end
     return heat
 end
@@ -902,12 +903,14 @@ end
 # ╔═╡ 8c6eeb0b-54a6-44a7-9579-55a4de69e31d
 begin
 	_u0 = zeros(size(L,1))
-	_u0[v] = 1.0
+	_u0[v1] = 1.0
+	_u0[v2] = 1.0
+	_u0[v3] = 1.0
 	heat[] = heat_implicit(L, A, _u0; dt=0.0001, steps=t_bunny)
 	show_gradients[] = has_grad
 	heat_grad = reshape(∇_bunny * heat[], 3, :)
 	heat_grad ./= sqrt.(sum(heat_grad .^ 2, dims=1))
-	_heat_grad = heat_grad[:,1:22:end]
+	_heat_grad = heat_grad[:,1:20:end]
 	heat_gradx[] = _heat_grad[1,:]
 	heat_grady[] = _heat_grad[2,:]
 	heat_gradz[] = _heat_grad[3,:]
@@ -947,6 +950,39 @@ function heat_spectral(λ, ϕ, A, init, t)
     ϕ * c
 end
 
+# ╔═╡ 7d9647bb-b0a1-4a21-a496-b43f2c61e7fe
+html"""
+<head>
+    <title>Toggle Online Image Button</title>
+    <style>
+        /* Initially hide the image */
+        #toggleImage {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <button id="toggleButton">?</button>
+    <img id="toggleImage" src="https://media.tenor.com/6xwjsmMIAIoAAAAd/happy-happy-dog.gif" alt="Image">
+    
+    <script>
+        // Get references to the button and the image
+        const toggleButton = document.getElementById('toggleButton');
+        const toggleImage = document.getElementById('toggleImage');
+
+        // Add a click event listener to the button
+        toggleButton.addEventListener('click', function() {
+            // Toggle the image's visibility
+            if (toggleImage.style.display === 'none') {
+                toggleImage.style.display = 'block';
+            } else {
+                toggleImage.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+"""
+
 # ╔═╡ 54f1f6fe-acc1-4308-b5f9-1694de5dab7f
 md"""
 ### GPU Support
@@ -968,6 +1004,18 @@ md"""
 [^5]: Thermal diffusivity is assumed to be $1$. For an introduction on the heat equation, check these [notes](https://web.stanford.edu/class/math220b/handouts/heateqn.pdf).
 [^6]: Adapted from [this SciML tutorial](https://docs.sciml.ai/DiffEqDocs/stable/examples/beeler_reuter/).
 [^7]: Wait vertex area? How does a vertex have an area? Here you can consider the barycentric area - the sum of the areas of the faces adjacent to the vertex divided by $3$.
+"""
+
+# ╔═╡ c1f1cb61-e802-4d72-8cc8-837450e9f35c
+html"""
+<style>
+	main {
+		margin: 0 auto;
+		max-width: 2000px;
+    	padding-left: max(160px, 10%);
+    	padding-right: max(160px, 10%);
+	}
+</style>
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -3672,10 +3720,10 @@ version = "1.4.1+0"
 
 # ╔═╡ Cell order:
 # ╟─7dc7f1eb-3e1f-4b75-8e4c-e3018b0259d6
-# ╟─dab8582c-e8e2-443f-b52c-ac716b2ca12e
-# ╟─efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
-# ╠═358c1832-06c0-4918-b766-8c1de98c21d3
 # ╟─edce4ccf-7be7-4b0d-98aa-c572eac3d0ad
+# ╠═dab8582c-e8e2-443f-b52c-ac716b2ca12e
+# ╠═efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
+# ╠═358c1832-06c0-4918-b766-8c1de98c21d3
 # ╟─94ca9000-947d-44d2-8a6d-f9177c476345
 # ╠═ad43bc4b-3cc4-4960-bb46-eb6978620e61
 # ╟─c235d925-3899-4cf7-9d9d-847ab81a7523
@@ -3747,21 +3795,24 @@ version = "1.4.1+0"
 # ╠═b7b393a9-e6f6-48ea-a4d5-d3e327f6bc18
 # ╟─1e1b6bed-9224-4968-afb6-6bbc9d635191
 # ╠═d79f5864-5193-4673-a593-1057ec15e927
+# ╟─7d9647bb-b0a1-4a21-a496-b43f2c61e7fe
 # ╠═b18c2afe-855c-4dd4-858d-f50a8cdd92fd
 # ╠═860530d1-3f6c-4774-91be-01b7aec16f91
 # ╠═8c6eeb0b-54a6-44a7-9579-55a4de69e31d
-# ╠═cbc43250-5168-4211-a92f-4f99209b07a0
-# ╟─7c128a1d-c69f-4c06-9f57-b2061628e241
+# ╟─ffdbb945-0e85-409a-9bd7-a5224f2724f9
+# ╟─cbc43250-5168-4211-a92f-4f99209b07a0
 # ╟─450ad839-16ce-406e-9269-665dba06937e
-# ╠═273a2353-32c6-4509-aa39-d94e45907000
-# ╟─611b3854-ba93-46d1-b270-4c6ddeea6585
+# ╟─273a2353-32c6-4509-aa39-d94e45907000
+# ╟─92915d09-067f-4ea6-a6a9-0f519c9ea84d
+# ╟─7d9c0d8d-e52f-44b9-ae77-bbda953c498c
 # ╟─070107d5-40e4-4f63-bdb9-9f315ebf18ba
 # ╠═4513d343-80c2-48c9-b628-5df1fde04b76
-# ╠═948cee7b-2533-4693-a333-88231054ff83
+# ╟─948cee7b-2533-4693-a333-88231054ff83
 # ╠═3ac61216-5029-47b5-85e4-3fc27f879e52
 # ╠═f798d3c7-278a-4c9b-aa89-1f8c2b94a938
 # ╟─54f1f6fe-acc1-4308-b5f9-1694de5dab7f
 # ╟─2a5ae2f3-f9a0-4ade-9307-f617a41e36ce
-# ╠═a9dfc324-03ec-4884-a19e-4371ac069e1b
+# ╟─a9dfc324-03ec-4884-a19e-4371ac069e1b
+# ╟─c1f1cb61-e802-4d72-8cc8-837450e9f35c
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
