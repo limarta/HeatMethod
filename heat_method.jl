@@ -1,6 +1,12 @@
 ### A Pluto.jl notebook ###
 # v0.19.27
 
+#> [frontmatter]
+#> title = "Heat Method for Distance Computation"
+#> date = "2023-09-01"
+#> tags = ["blog", " "]
+#> description = "Demonstration of the Heat Method"
+
 using Markdown
 using InteractiveUtils
 
@@ -18,13 +24,19 @@ end
 using PlutoUI
 
 # ╔═╡ 358c1832-06c0-4918-b766-8c1de98c21d3
-using DifferentialEquations, Plots, Eikonal, LinearAlgebra, SparseArrays
+begin
+	using DifferentialEquations , Plots, Eikonal, LinearAlgebra, SparseArrays
+end
 
 # ╔═╡ d79f5864-5193-4673-a593-1057ec15e927
 begin
 	using PlyIO
+	using Arpack
+	using ColorSchemes
 	using WGLMakie
-	WGLMakie.JSServe.SERVER_CONFIGURATION.listen_port[] = 8080
+	using JSServe
+	Page()
+	WGLMakie.JSServe.SERVER_CONFIGURATION.listen_port[] = 8088
 end
 
 
@@ -145,8 +157,8 @@ Finally even if we were willing to take the hit in runtime and memory performanc
 # ╔═╡ f0eb3973-f9c4-41fc-8f38-3bcb71e76c7d
 let
 	θ = range(0,2,100)
-	c1 = Shape([(0.9i,0.9j) for (i,j) in zip(cospi.(θ), sinpi.(θ))])
-	c2 = Shape([(0.5*i,0.5*j) for (i,j) in zip(cospi.(θ), sinpi.(θ))])
+	c1 = Plots.Shape([(0.9i,0.9j) for (i,j) in zip(cospi.(θ), sinpi.(θ))])
+	c2 = Plots.Shape([(0.5*i,0.5*j) for (i,j) in zip(cospi.(θ), sinpi.(θ))])
 	T = 1.0
 	Plots.plot(ticks=false,  framestyle=:none, size=(200, 200), legend=false, xlims=(-T,T), ylims=(-T,T))
 	Plots.plot!(c1, color=:lightgray)
@@ -213,7 +225,7 @@ Below we have defined $\texttt{heat\_solution}$ to be the heat kernel with initi
 """
 
 # ╔═╡ c814f0d2-cbb0-4db9-9499-993d51f42356
-@bind t_varadhan Slider(range(0,0.1, 101), show_value=true, default=0.005)
+@bind t_varadhan PlutoUI.Slider(range(0,0.1, 101), show_value=true, default=0.005)
 
 # ╔═╡ e1c19aea-d671-4c01-8bcf-119e7abb295f
 md"""
@@ -427,12 +439,13 @@ let
 	p = (1, step(dx), step(dy))
 	problem = ODEProblem(laplacian_neumann, u0,(0, 5.0), p)
 	soln = solve(problem)
+
 	Plots.heatmap(dx, dy, soln(t_multi), aspect_ratio=:equal, xlims=(0,L), ylims=(0,L))
 	ii = [20, 9, 2]
 	jj = [20, 9, 20]
 	fig1 = Plots.scatter!(dx[ii],dy[jj], markersize=5, color=:green, markerstrokewidth=0, legend=false)
 	measurements = [soln(t_multi)[i,j] for (i,j) in zip(ii,jj)]
-	fig2 = Plots.plot(bar(["A","B","C"], measurements), ylabel="Heat", margin=5*Plots.mm)
+	fig2 = Plots.plot(Plots.bar(["A","B","C"], measurements), ylabel="Heat", margin=5*Plots.mm)
 	layout = @layout([a b{0.2w}])
     Plots.plot(fig1, fig2, layout = layout, legend = false)
 	
@@ -537,7 +550,7 @@ function ∇(h::Matrix)
 end
 
 # ╔═╡ 2415e55d-bed0-4050-893e-b6a7af00ef45
-@bind t_grad Slider(range(1e-6,2,101), show_value=true, default=0.5)
+@bind t_grad PlutoUI.Slider(range(1e-6,2,101), show_value=true, default=0.5)
 
 # ╔═╡ 160902db-e0b9-4d48-8fcb-41dbeaf429e8
 let
@@ -582,10 +595,18 @@ Notice that $\nabla\cdot X\in \mathbb{R}^{\vert V\vert}$, so as soon as we find 
 let
 end
 
-# ╔═╡ 71b24653-c6e2-4539-b8cc-082b3d838da7
+# ╔═╡ c3d64ff4-9d3e-44da-93f1-827b93042fc9
 md"""
 # Heat Method on Meshes
+"""
 
+# ╔═╡ 1bc67b2f-a1e9-4121-92cd-083b4ea9567b
+Markdown.MD(Markdown.Admonition("danger", "", [md"""
+**Warning**: I have tried my best but was unable to display the plots in this section for static viewing (what you are probably using right now). It seems that Pluto+WGLMakie is currently a bit brittle for static html files but hopefully this will be fixed soon. To my dismay, you will need to download and run Julia locally (or on Binder though this can take forever). For consolation, I left screenshots for those of you viewing online and a little suprise for the astute reader.
+"""]))
+
+# ╔═╡ 8a65dd84-2098-4765-8912-4ed6d32a9e0a
+md"""
 Up to this point, the examples were only of square plates, but the most interesting problems arise in 3D with meshes and point clouds. Luckily the Heat Method carries over to this regime. One thing we need to look out for is how how to do analogous calculations as those done one the square plate. For this, we need to propose discretizations for the operators.
 """
 
@@ -670,8 +691,8 @@ vdot(x,y; dims=1) = sum(x .* y, dims=dims)
 
 # ╔═╡ 9dd097b6-5f82-4fbe-b0d1-86756b7747d2
 function cotlaplacian(V,F)
-    nv = size(V)[2]
-    nf = size(F)[2]
+    nv = size(V,2)
+    nf = size(F,2)
     #For all 3 shifts of the roles of triangle vertices
     #to compute different cotangent weights
     cots = zeros(nf, 3)
@@ -707,8 +728,25 @@ function face_normals(V,F)
     A
 end
 
+# ╔═╡ 745e6b01-dfdc-4e41-a43b-8002cd5e8357
+face_centers(V,F) = dropdims(sum(V[:,F], dims=2) ./ 3; dims=2)
+
 # ╔═╡ 321527d2-068c-4e85-8947-f6d1d6fe4fd3
 face_area(V,F) = norm.(eachcol(face_area_normals(V,F)))
+
+# ╔═╡ 05d16cc7-3f0a-426c-954a-63d840708777
+function vertex_area(V,F)
+    B = zeros(size(V)[2])
+    for f in eachcol(F)
+        T = V[:,f]
+        x = T[:,1] - T[:,2]
+        y = T[:,3] - T[:,2]
+        A = 0.5*(sum(cross(x,y).^2)^0.5)
+        B[f] .+= A
+    end
+    B ./= 3
+    return B
+end
 
 # ╔═╡ f324cbad-1f68-4359-9ea4-8eb8f13b27e1
 function face_grad(V,F)
@@ -721,14 +759,14 @@ function face_grad(V,F)
     uv = V[:,F[2,:]] - V[:,F[1,:]]
     vw = V[:,F[3,:]] - V[:,F[2,:]]
     wu = V[:,F[1,:]] - V[:,F[3,:]]
-    J = 1:3*mesh.nf
+    J = 1:3*size(F,2)
     G2 = cross.(eachcol(N), eachcol(wu)) ./ A
     G1 = cross.(eachcol(N), eachcol(vw)) ./ A
     G3 = cross.(eachcol(N), eachcol(uv)) ./ A
     G1 = collect(Iterators.flatten(G1))
     G2 = collect(Iterators.flatten(G2))
     G3 = collect(Iterators.flatten(G3))
-    g = sparse([J;J;J], [u;v;w], [G1; G2; G3], 3*mesh.nf, mesh.nv)
+    g = sparse([J;J;J], [u;v;w], [G1; G2; G3], 3*size(F,2), size(V,2))
     g ./= 2
     return g
 end
@@ -748,11 +786,11 @@ function div(V,F)
     u = repeat(F[1,:], inner=3)
     v = repeat(F[2,:], inner=3)
     w = repeat(F[3,:], inner=3)
-    J = 1:3*mesh.nf
+    J = 1:3*size(F,2)
     A = vec(-cotan[2,:]' .* wu + cotan[3,:]' .* uv)
     B = vec(cotan[1,:]' .* vw - cotan[3,:]' .* uv)
     C = vec(-cotan[1,:]' .* vw + cotan[2,:]' .* wu)
-    ∇ = sparse([u;v;w], [J;J;J], [A;B;C], mesh.nv, 3*mesh.nf)
+    ∇ = sparse([u;v;w], [J;J;J], [A;B;C], size(V,2), 3*size(F,2))
     ∇ ./= 2
 end
 
@@ -765,45 +803,63 @@ Now for some examples. We use the PlyIO package to read in meshes.
 # ╔═╡ b18c2afe-855c-4dd4-858d-f50a8cdd92fd
 begin
 # Download Stanford bunny and do some data maniuplation...
-	bunny_file = download("https://raw.githubusercontent.com/naucoin/VTKData/master/Data/bunny.ply")
-	bunny_ply = load_ply(bunny_file)
-	V = stack(Array(bunny_ply["vertex"][i]) for i in ["x", "y", "z"])'
-	F = stack(Array(bunny_ply["face"]["vertex_indices"])) .+ 1
+		bunny_file = download("https://raw.githubusercontent.com/naucoin/VTKData/master/Data/bunny.ply")
+		bunny_ply = load_ply(bunny_file)
+		V = stack(Array(bunny_ply["vertex"][i]) for i in ["x", "y", "z"])'
+		F = stack(Array(bunny_ply["face"]["vertex_indices"])) .+ 1
+		not_in = Set{Int}()
+	n = size(V,2)
+	for i=1:n
+	    !(i in F) && push!(not_in, i)
+	end
+	V = V[:,setdiff(1:n, not_in)]
+	n = size(V, 2)
+	F = map(F) do i
+	    !(i in not_in) && return i - sum(i .> not_in)
+	    return i
+	end
 end
 
-# ╔═╡ 66404be5-e9d4-423b-9102-40dae951ca12
-@bind tt Slider(1:10)
+# ╔═╡ 860530d1-3f6c-4774-91be-01b7aec16f91
+begin
+	fig = Figure(resolution=(1500,1500))
+	ax1 = Axis3(fig[1,1], viewmode=:fit, aspect = (1, 1, 1), azimuth=0, elevation=0)
+	hidespines!(ax1)
+	hidedecorations!(ax1)
+	ax2 = Axis3(fig[1,2], viewmode=:fit, aspect= (1,1,1), azimuth=0, elevation =0)
+	hidespines!(ax2)
+	hidedecorations!(ax2)
+	L = cotlaplacian(V,F)
+	A = vertex_area(V,F)
+	u0 = zeros(size(L,1))
+	u0[1] = 1.0
+	heat = Observable(u0)
+	∇_bunny = face_grad(V,F);
+	Δ_bunny = div(V,F)
+	anchor_points = face_centers(V,F)[:,1:22:end]
+	show_gradients = Observable(true)
+	heat_gradx = Observable(zeros(ceil(Int, size(F,2)/22)))
+	heat_grady = Observable(zeros(ceil(Int, size(F,2)/22)))
+	heat_gradz = Observable(zeros(ceil(Int, size(F,2)/22)))
+	geodesics = Observable(zeros(size(V,2)))
+end
+
+# ╔═╡ cbc43250-5168-4211-a92f-4f99209b07a0
+md"""t $(@bind t_bunny PlutoUI.Slider(1:200, default=10, show_value=true))"""
+
+# ╔═╡ 7c128a1d-c69f-4c06-9f57-b2061628e241
+md"""
+v $(@bind v PlutoUI.Slider(1:1000, default=488, show_value=true))
+"""
+
+# ╔═╡ 450ad839-16ce-406e-9269-665dba06937e
+md"""Show Gradient Field$(@bind has_grad PlutoUI.CheckBox())"""
 
 # ╔═╡ 273a2353-32c6-4509-aa39-d94e45907000
 let
-	# L = cotlaplacian(V,F)
-	fig = Figure(resolution=(1000,1000))
-	cam3d = cam3d!(fig.scene)
-	# cam.attributes[:rotation_center][] = :eyeposition
-	ax = Axis3(fig[1,1], viewmode=:fit, aspect = (1, 1, 1), azimuth=0, elevation=0)
-	out = mesh!(ax,V[[3,1,2],:]',F[[2,1,3],:]', color = :gray80)
-	hidespines!(ax)
-	hidedecorations!(ax)
-	fig
-end
-
-# ╔═╡ 0de805f2-88a8-416e-8b58-58b2a3c26e04
-let
-	fig = Figure()
-	
-	ax = Axis(fig[1, 1])
-	
-	sl_x = Makie.Slider(fig[2, 1], range = range(0,10,50), startvalue = 3)
-	sl_y = Makie.Slider(fig[1, 2], range = 0:0.01:10, horizontal = false, startvalue = 6)
-	
-	point = map(sl_x.value, sl_y.value) do x, y
-	    Point2f(x, y)
-	end
-	
-	Makie.scatter!(point, color = :red, markersize = 20)
-	
-	limits!(ax, 0, 10, 0, 10)
-	
+	mesh!(ax1,V[[3,1,2],:]',F[[2,1,3],:]', color = heat)
+	arrows!(ax1, anchor_points[3,:],anchor_points[1,:],anchor_points[2,:], heat_gradz, heat_gradx, heat_grady; linewidth=0.001, arrowsize=0.001, lengthscale=0.001, arrowcolor=:red, linecolor=:red)
+	mesh!(ax2,V[[3,1,2],:]',F[[2,1,3],:]', color = geodesics, colormap=:prism)
 	fig
 end
 
@@ -833,11 +889,32 @@ $$Ah_{t'} = (A+dt\cdot L)^{-1}h_t$$
 function heat_implicit(L, A, init; dt=0.001, steps=1)
     M = spdiagm(A)
     D = cholesky(M+dt*L)
+	# D = (M+dt*L)
+	# D = I+dt*L
     heat = init
     for t=1:steps
         heat = D \ (M*heat)
+		# heat = D \ heat
     end
     return heat
+end
+
+# ╔═╡ 8c6eeb0b-54a6-44a7-9579-55a4de69e31d
+begin
+	_u0 = zeros(size(L,1))
+	_u0[v] = 1.0
+	heat[] = heat_implicit(L, A, _u0; dt=0.0001, steps=t_bunny)
+	show_gradients[] = has_grad
+	heat_grad = reshape(∇_bunny * heat[], 3, :)
+	heat_grad ./= sqrt.(sum(heat_grad .^ 2, dims=1))
+	_heat_grad = heat_grad[:,1:22:end]
+	heat_gradx[] = _heat_grad[1,:]
+	heat_grady[] = _heat_grad[2,:]
+	heat_gradz[] = _heat_grad[3,:]
+	X = Δ_bunny * vec(heat_grad)
+	dist = L \ X
+	dist .-= minimum(dist)
+	geodesics[] = dist
 end
 
 # ╔═╡ 948cee7b-2533-4693-a333-88231054ff83
@@ -896,8 +973,11 @@ md"""
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
+ColorSchemes = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Eikonal = "a6aab1ba-8f88-4217-b671-4d0788596809"
+JSServe = "824d6782-a2ef-11e9-3a09-e5662e0c26f9"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
@@ -906,12 +986,15 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
 
 [compat]
+Arpack = "~0.5.4"
+ColorSchemes = "~3.24.0"
 DifferentialEquations = "~7.9.1"
 Eikonal = "~0.1.1"
+JSServe = "~2.2.10"
 Plots = "~1.39.0"
 PlutoUI = "~0.7.52"
 PlyIO = "~1.1.2"
-WGLMakie = "~0.8.13"
+WGLMakie = "~0.8.14"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -920,7 +1003,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.10.0-beta2"
 manifest_format = "2.0"
-project_hash = "f53d55777ffb3bf527fc2a8bf3b8161e278ff46c"
+project_hash = "92b21b001355236ecd687cecd838727252a04c65"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "5d2e21d7b0d8c22f67483ef95ebdc39c0e6b6003"
@@ -979,6 +1062,18 @@ deps = ["LinearAlgebra", "Random", "StaticArrays"]
 git-tree-sha1 = "62e51b39331de8911e4a7ff6f5aaf38a5f4cc0ae"
 uuid = "ec485272-7323-5ecc-a04f-4719b315124d"
 version = "0.2.0"
+
+[[deps.Arpack]]
+deps = ["Arpack_jll", "Libdl", "LinearAlgebra", "Logging"]
+git-tree-sha1 = "9b9b347613394885fd1c8c7729bfc60528faa436"
+uuid = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
+version = "0.5.4"
+
+[[deps.Arpack_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "OpenBLAS_jll", "Pkg"]
+git-tree-sha1 = "5ba6c757e8feccf03a1554dfaf3e26b3cfc7fd5e"
+uuid = "68821587-b530-5797-8361-c406ea357684"
+version = "3.5.1+1"
 
 [[deps.ArrayInterface]]
 deps = ["Adapt", "LinearAlgebra", "Requires", "SparseArrays", "SuiteSparse"]
@@ -1151,9 +1246,9 @@ version = "0.4.0"
 
 [[deps.ColorSchemes]]
 deps = ["ColorTypes", "ColorVectorSpace", "Colors", "FixedPointNumbers", "PrecompileTools", "Random"]
-git-tree-sha1 = "d9a8f86737b665e15a9641ecbac64deef9ce6724"
+git-tree-sha1 = "67c1f244b991cad9b0aa4b7540fb758c2488b129"
 uuid = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
-version = "3.23.0"
+version = "3.24.0"
 
 [[deps.ColorTypes]]
 deps = ["FixedPointNumbers", "Random"]
@@ -2243,15 +2338,15 @@ version = "0.5.11"
 
 [[deps.Makie]]
 deps = ["Animations", "Base64", "CRC32c", "ColorBrewer", "ColorSchemes", "ColorTypes", "Colors", "Contour", "DelaunayTriangulation", "Distributions", "DocStringExtensions", "Downloads", "FFMPEG_jll", "FileIO", "FixedPointNumbers", "Formatting", "FreeType", "FreeTypeAbstraction", "GeometryBasics", "GridLayoutBase", "ImageIO", "InteractiveUtils", "IntervalSets", "Isoband", "KernelDensity", "LaTeXStrings", "LinearAlgebra", "MacroTools", "MakieCore", "Markdown", "Match", "MathTeXEngine", "Observables", "OffsetArrays", "Packing", "PlotUtils", "PolygonOps", "PrecompileTools", "Printf", "REPL", "Random", "RelocatableFolders", "Setfield", "ShaderAbstractions", "Showoff", "SignedDistanceFields", "SparseArrays", "StableHashTraits", "Statistics", "StatsBase", "StatsFuns", "StructArrays", "TriplotBase", "UnicodeFun"]
-git-tree-sha1 = "ecc334efc4a8a68800776b0d85ab7bb2fff63f7a"
+git-tree-sha1 = "cf10f4b9d09da50f124ab7bcb530e57f700328f0"
 uuid = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
-version = "0.19.9"
+version = "0.19.10"
 
 [[deps.MakieCore]]
 deps = ["Observables"]
-git-tree-sha1 = "1efb1166dd9398f2ccf6d728f896658c9c84733e"
+git-tree-sha1 = "17d51182db2667962bc7e1d18b74881d0d0adbe6"
 uuid = "20f20a25-4f0e-4fdf-b5d1-57303727442b"
-version = "0.6.6"
+version = "0.6.7"
 
 [[deps.ManualMemory]]
 git-tree-sha1 = "bcaef4fc7a0cfe2cba636d84cda54b5e4e4ca3cd"
@@ -2891,9 +2986,9 @@ version = "1.1.1"
 
 [[deps.ShaderAbstractions]]
 deps = ["ColorTypes", "FixedPointNumbers", "GeometryBasics", "LinearAlgebra", "Observables", "StaticArrays", "StructArrays", "Tables"]
-git-tree-sha1 = "0d15c3e7b2003f4451714f08ffec2b77badc2dc4"
+git-tree-sha1 = "db0219befe4507878b1a90e07820fed3e62c289d"
 uuid = "65257c39-d410-5151-9873-9b3e5be5013e"
-version = "0.3.0"
+version = "0.4.0"
 
 [[deps.SharedArrays]]
 deps = ["Distributed", "Mmap", "Random", "Serialization"]
@@ -3310,9 +3405,9 @@ version = "0.2.0"
 
 [[deps.WGLMakie]]
 deps = ["Colors", "FileIO", "FreeTypeAbstraction", "GeometryBasics", "Hyperscript", "JSServe", "LinearAlgebra", "Makie", "Observables", "PNGFiles", "PrecompileTools", "RelocatableFolders", "ShaderAbstractions", "StaticArrays"]
-git-tree-sha1 = "26e690019b85187838f122c980d590e334cc7e1a"
+git-tree-sha1 = "8a430666e4df430efe88a44f51eaca25f2dd293f"
 uuid = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
-version = "0.8.13"
+version = "0.8.14"
 
 [[deps.Wayland_jll]]
 deps = ["Artifacts", "EpollShim_jll", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll", "Pkg", "XML2_jll"]
@@ -3576,9 +3671,9 @@ version = "1.4.1+0"
 """
 
 # ╔═╡ Cell order:
-# ╠═7dc7f1eb-3e1f-4b75-8e4c-e3018b0259d6
-# ╠═dab8582c-e8e2-443f-b52c-ac716b2ca12e
-# ╠═efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
+# ╟─7dc7f1eb-3e1f-4b75-8e4c-e3018b0259d6
+# ╟─dab8582c-e8e2-443f-b52c-ac716b2ca12e
+# ╟─efa0e0ba-8b30-4f69-9bc8-bdd89ca5f61a
 # ╠═358c1832-06c0-4918-b766-8c1de98c21d3
 # ╟─edce4ccf-7be7-4b0d-98aa-c572eac3d0ad
 # ╟─94ca9000-947d-44d2-8a6d-f9177c476345
@@ -3628,7 +3723,9 @@ version = "1.4.1+0"
 # ╠═160902db-e0b9-4d48-8fcb-41dbeaf429e8
 # ╟─7c9b744e-72cd-449e-8228-a25b5c845233
 # ╠═4c0e3f35-34d0-43a1-b110-6532decf2c86
-# ╟─71b24653-c6e2-4539-b8cc-082b3d838da7
+# ╟─c3d64ff4-9d3e-44da-93f1-827b93042fc9
+# ╟─1bc67b2f-a1e9-4121-92cd-083b4ea9567b
+# ╟─8a65dd84-2098-4765-8912-4ed6d32a9e0a
 # ╠═e48d51a3-debc-4339-84fe-20ee9613e808
 # ╟─9a0aa371-9fbf-493f-ba4e-cb0801c2d5ef
 # ╟─861049ba-49d9-4f8c-a186-f1f95b282904
@@ -3643,15 +3740,20 @@ version = "1.4.1+0"
 # ╠═61f3e733-6527-43b9-97bd-08459e0878fc
 # ╠═f7914d06-c58e-4033-b895-9c069ec6eb4e
 # ╠═dc7eece7-942a-491a-9eaa-033c19112d32
+# ╠═745e6b01-dfdc-4e41-a43b-8002cd5e8357
 # ╠═321527d2-068c-4e85-8947-f6d1d6fe4fd3
+# ╠═05d16cc7-3f0a-426c-954a-63d840708777
 # ╠═f324cbad-1f68-4359-9ea4-8eb8f13b27e1
 # ╠═b7b393a9-e6f6-48ea-a4d5-d3e327f6bc18
 # ╟─1e1b6bed-9224-4968-afb6-6bbc9d635191
 # ╠═d79f5864-5193-4673-a593-1057ec15e927
 # ╠═b18c2afe-855c-4dd4-858d-f50a8cdd92fd
-# ╠═66404be5-e9d4-423b-9102-40dae951ca12
+# ╠═860530d1-3f6c-4774-91be-01b7aec16f91
+# ╠═8c6eeb0b-54a6-44a7-9579-55a4de69e31d
+# ╠═cbc43250-5168-4211-a92f-4f99209b07a0
+# ╟─7c128a1d-c69f-4c06-9f57-b2061628e241
+# ╟─450ad839-16ce-406e-9269-665dba06937e
 # ╠═273a2353-32c6-4509-aa39-d94e45907000
-# ╠═0de805f2-88a8-416e-8b58-58b2a3c26e04
 # ╟─611b3854-ba93-46d1-b270-4c6ddeea6585
 # ╟─070107d5-40e4-4f63-bdb9-9f315ebf18ba
 # ╠═4513d343-80c2-48c9-b628-5df1fde04b76
