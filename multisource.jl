@@ -29,7 +29,7 @@ dx = range(-1,1,N)
 dy = range(-1,1,N)
 u0 = initialize_grid(dx,dy)
 problem = ODEProblem(laplacian, u0,(0, 1.0), (10, step(dx)))
-soln = solve(problem)
+soln = solve(problem
 t = 0.01
 dists = varadhan_theorem(t,soln(t))
 minimum(dists)

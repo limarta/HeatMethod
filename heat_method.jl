@@ -36,7 +36,7 @@ begin
 	using WGLMakie
 	using JSServe
 	Page()
-	WGLMakie.JSServe.SERVER_CONFIGURATION.listen_port[] = 8088
+	WGLMakie.JSServe.SERVER_CONFIGURATION.listen_port[] = 8089
 end
 
 
@@ -355,8 +355,8 @@ First we define the Laplacian with Dirichlet boundary conditions.[^6]
 function laplacian_dirichlet(Δu,u,p,t)
 	α, Δx,Δy = p
     N1, N2 = size(u)
-	Δx² = Δx
-	Δy² = Δy
+	Δx² = Δx^2
+	Δy² = Δy^2
     for j in 2:(N2-1)
         for i in 2:(N1-1)
             Δu[i, j] = 
@@ -527,46 +527,134 @@ Generally, the gradient field is a vector field and there are several equivalent
 # ╔═╡ 7a7a67a7-7958-43bb-bf54-36b80ecdf1de
 function ∇(h::Matrix)
 	N1, N2 = size(h)
-	gradx = zeros(N1, N2+1)
-	grady = zeros(N1+1, N2)
-	for j in 2:N2
-        for i in 1:N1
-            gradx[i,j] = h[i,j]-h[i,j-1]
-        end
-    end
-	# left/right edges
-    gradx[:,1] = h[:,1]
-	gradx[:,end] = -h[:,end]
-
+	grad = zeros(N1+1, N2+1,2)
 	for j in 1:N2
-		for i in 2:N1
-			grady[i,j] = h[i,j] - h[i-1,j]
+		for i in 1:N1
+			if j == 1
+				grad[i,j,1] = h[i,j]
+			else
+				grad[i,j,1] = h[i,j] - h[i,j-1]
+			end
+
+			if i == 1
+				grad[i,j,2] = h[i,j]
+			else
+				grad[i,j,2] = h[i,j] - h[i-1,j]
+			end
 		end
 	end
-	grady[1,:] = h[1,:]
-	grady[end,:] = -h[end,:]
-	
-	return gradx, grady
+	for i in 1:N1
+		grad[i,N2+1,1] = -h[i,N2]
+	end
+	for j in 1:N2
+		grad[N1+1,j,2] = -h[N1,j]
+	end
+	return grad
+end
+
+# ╔═╡ b89464c0-baaa-4571-a744-91d5480c6ae1
+function normalize_field(grad)
+	Z = sqrt.(sum(grad.^2, dims=3))
+	Z[Z .== 0] .= 1
+	grad ./ Z
+end
+
+# ╔═╡ 160902db-e0b9-4d48-8fcb-41dbeaf429e8
+begin
+	N=17
+	h = heat_kernel(N, (16,16), 1.0, 2.0, :dirichlet)
+	nothing
 end
 
 # ╔═╡ 2415e55d-bed0-4050-893e-b6a7af00ef45
 @bind t_grad PlutoUI.Slider(range(1e-6,2,101), show_value=true, default=0.5)
 
-# ╔═╡ 160902db-e0b9-4d48-8fcb-41dbeaf429e8
-let
-	N = 17
-	L = 1.0
-	h = heat_kernel(N, (16,16), L, 2.0, :dirichlet)
-	heat = h(t_grad)
+# ╔═╡ c0c94bdd-a7d0-46c3-a61e-6c0d40d8a3c9
+begin
+	heat_grid = h(t_grad)
+	Plots.heatmap(1:N, 1:N, heat_grid, xlims=(1,N), ylims=(1,N),aspect_ratio=:equal, ticks=false)
+	
 	meshgrid(x, y) = (repeat(x, outer=length(y)), repeat(y, inner=length(x)))
-	gradx, grady = ∇(heat)
-	x,y = meshgrid(1:N+1, 1:N)
-	tx = 0.4vec(gradx')
-	Plots.heatmap(1:N, 1:N, heat, xlims=(1,N), ylims=(1,N),aspect_ratio=:equal, ticks=false)
-	Plots.quiver!(x,y, quiver=(tx, zeros(length(tx))))
-	x,y = meshgrid(1:N+1, 1:N)
-	ty = vec(grady')
-	Plots.quiver!(x, y, quiver=(zeros(length(ty)), ty))
+	heat_grad_grid = ∇(heat_grid)
+	heat_grad_normalized = normalize_field(heat_grad_grid)
+	dd = (1:(N+1))
+	Z =  2
+	x, y = meshgrid((1:(N+1)).-0.5, (1:(N+1)))
+	tx = vec(heat_grad_normalized[:,:,1]')/Z
+	Plots.quiver!(x,y, quiver=(tx, zeros(size(tx))))
+	ty = vec(heat_grad_normalized[:,:,2]')/Z
+	x, y = meshgrid((1:(N+1)), (1:(N+1)).-0.5)
+	Plots.quiver!(x,y, quiver=(zeros(size(ty)), ty))
+end
+
+# ╔═╡ 346c06a8-c91f-4c56-9840-67f2f02bd8c9
+function div_grid(grad, dx, dy)
+	N1, N2, _ = size(grad) .- (1,1,0)
+	div = zeros(N1, N2)
+	for j=1:N2
+		for i=1:N1
+			div[i,j] = (grad[i,j+1,1]-grad[i,j,1]) /(dx^2) +(grad[i+1,j,2]-grad[i,j,2])/(dy^2)
+		end
+	end
+	div
+end
+
+# ╔═╡ 79d22285-1c69-495c-b05d-83d8c758ee46
+function l(N,M)
+    # ∇⋅ is |V|×3|F|
+	Δx² = Δx^2
+	Δy² = Δy^2
+	Δ = sparse(N*M, N*M)
+	for j=2:(M-1)
+		for i=1:(N-1)
+			Δ[i,j] = -2/Δx² -2/Δy²
+			Δ[i,j+1] = 1/Δx²
+			Δ[i,j-1] = 1/Δx²
+			Δ[i,j-M] = 1/Δy²
+			Δ[i,j+M] = 1/Δy²
+		end
+	end
+	for i in 2:(N1 - 1)
+		Δ[i,1] = 0
+	end
+	for j in 2:(N2-1)
+	end
+    # for j in 2:(N2-1)
+    #     for i in 2:(N1-1)
+    #         Δu[i, j] = 
+				# (u[i+1, j] + u[i-1, j] -2u[i,j]) / Δx² + 
+				# (u[i, j+1] + u[i, j-1] -2u[i,j])/ Δy²
+    #     end
+    # end
+
+	# Dirichlet condition enforced by dropping neighbors.
+	
+    # left/right edges
+    # for i in 2:(N1 - 1)
+    #     Δu[i, 1] = (u[i+1, 1] + u[i-1, 1] -2u[i,1])/Δx² + (u[i, 2] - 2u[i, 1])/Δy²
+    #     Δu[i, N2] = (u[i+1, N2] + u[i-1, N2] -2u[i,N2])/Δx² + (u[i, N2-1] - 2u[i, N2])/Δy²
+    # end
+
+    # # top/bottom edges
+    # for j in 2:(N2-1)
+    #     Δu[1, j] = (u[1, j+1] + u[1, j-1] - 2u[1,j])/Δx² + (u[2, j] - 2u[1, j])/Δy²
+    #     Δu[N1, j] = (u[N1, j+1] + u[N1, j-1] -2u[N1,j])/Δx² + (u[N1-1, j] - 2u[N1, j])/Δy²
+    # end
+
+    # corners
+    Δu[1, 1] = (u[2, 1]-2u[1,1])/Δx² + (u[1, 2]-2u[1, 1])/Δy²
+    Δu[N1, 1] = (u[N1-1, 1]-2u[N1,1])/Δx² + (u[N1, 2]-2u[N1, 1])/Δy²
+    Δu[1, N2] = (u[2, N2] -2u[1,N2])/Δx²+ (u[1, N2 - 1]-2u[1,N2])/Δy²
+    Δu[N1, N2] = (u[N1 - 1, N2]-u[N1,N2])/Δx²+ (u[N1, N2-1]-u[N1, N2])/Δy²
+	Δu .*= α
+	Δu
+end
+
+# ╔═╡ a701e06d-553e-43b6-b36a-c68667bfd4b1
+begin
+	s = step(range(0,1,N))
+	φ = div_grid(heat_grad_normalized, s,s)
+	findall(x->x>0, φ)
 end
 
 # ╔═╡ 7c9b744e-72cd-449e-8228-a25b5c845233
@@ -589,10 +677,6 @@ $$\nabla \cdot X = Lu$$
 
 Notice that $\nabla\cdot X\in \mathbb{R}^{\vert V\vert}$, so as soon as we find a way to compute the "discrete div", the only thing left to do is to solve for $u$ as a system of linear equations!
 """
-
-# ╔═╡ 4c0e3f35-34d0-43a1-b110-6532decf2c86
-let
-end
 
 # ╔═╡ c3d64ff4-9d3e-44da-93f1-827b93042fc9
 md"""
@@ -799,6 +883,39 @@ md"""
 Now for some examples. We use the PlyIO package to read in meshes.
 """
 
+# ╔═╡ 7d9647bb-b0a1-4a21-a496-b43f2c61e7fe
+html"""
+<head>
+    <title>Toggle Online Image Button</title>
+    <style>
+        /* Initially hide the image */
+        #toggleImage {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <button id="toggleButton">?</button>
+    <img id="toggleImage" src="https://media.tenor.com/6xwjsmMIAIoAAAAd/happy-happy-dog.gif" alt="Image">
+    
+    <script>
+        // Get references to the button and the image
+        const toggleButton = document.getElementById('toggleButton');
+        const toggleImage = document.getElementById('toggleImage');
+
+        // Add a click event listener to the button
+        toggleButton.addEventListener('click', function() {
+            // Toggle the image's visibility
+            if (toggleImage.style.display === 'none') {
+                toggleImage.style.display = 'block';
+            } else {
+                toggleImage.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+"""
+
 # ╔═╡ b18c2afe-855c-4dd4-858d-f50a8cdd92fd
 begin
 # Download Stanford bunny and do some data maniuplation...
@@ -949,39 +1066,6 @@ function heat_spectral(λ, ϕ, A, init, t)
     c = ϕ' * (A*init) .* exp.(-λ * t')
     ϕ * c
 end
-
-# ╔═╡ 7d9647bb-b0a1-4a21-a496-b43f2c61e7fe
-html"""
-<head>
-    <title>Toggle Online Image Button</title>
-    <style>
-        /* Initially hide the image */
-        #toggleImage {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <button id="toggleButton">?</button>
-    <img id="toggleImage" src="https://media.tenor.com/6xwjsmMIAIoAAAAd/happy-happy-dog.gif" alt="Image">
-    
-    <script>
-        // Get references to the button and the image
-        const toggleButton = document.getElementById('toggleButton');
-        const toggleImage = document.getElementById('toggleImage');
-
-        // Add a click event listener to the button
-        toggleButton.addEventListener('click', function() {
-            // Toggle the image's visibility
-            if (toggleImage.style.display === 'none') {
-                toggleImage.style.display = 'block';
-            } else {
-                toggleImage.style.display = 'none';
-            }
-        });
-    </script>
-</body>
-"""
 
 # ╔═╡ 54f1f6fe-acc1-4308-b5f9-1694de5dab7f
 md"""
@@ -3760,17 +3844,21 @@ version = "1.4.1+0"
 # ╟─e56e6e62-5f38-467d-83bd-daaf4a968044
 # ╟─47e4da81-2c79-44bc-8d87-a9a0f2e45d4e
 # ╟─47b00e38-83d1-4888-baee-662bd716827c
-# ╟─387f2124-1802-405f-8d6e-3cfdcefe2f46
+# ╠═387f2124-1802-405f-8d6e-3cfdcefe2f46
 # ╟─3ce304a9-3dfd-42f1-b3cf-308b6ce3cbac
-# ╟─ff09b1b2-3990-4bc7-8f6b-962e2ecfee3d
+# ╠═ff09b1b2-3990-4bc7-8f6b-962e2ecfee3d
 # ╟─ca26a33f-17c3-4a91-b95c-75b83409705e
 # ╠═cffa4dc5-c9a8-4277-b87b-5dd3a5eff858
 # ╟─2a77d78c-1b8a-4690-9024-46a6794d8efd
 # ╠═7a7a67a7-7958-43bb-bf54-36b80ecdf1de
-# ╟─2415e55d-bed0-4050-893e-b6a7af00ef45
+# ╠═b89464c0-baaa-4571-a744-91d5480c6ae1
 # ╠═160902db-e0b9-4d48-8fcb-41dbeaf429e8
+# ╟─2415e55d-bed0-4050-893e-b6a7af00ef45
+# ╠═c0c94bdd-a7d0-46c3-a61e-6c0d40d8a3c9
+# ╠═346c06a8-c91f-4c56-9840-67f2f02bd8c9
+# ╠═79d22285-1c69-495c-b05d-83d8c758ee46
+# ╠═a701e06d-553e-43b6-b36a-c68667bfd4b1
 # ╟─7c9b744e-72cd-449e-8228-a25b5c845233
-# ╠═4c0e3f35-34d0-43a1-b110-6532decf2c86
 # ╟─c3d64ff4-9d3e-44da-93f1-827b93042fc9
 # ╟─1bc67b2f-a1e9-4121-92cd-083b4ea9567b
 # ╟─8a65dd84-2098-4765-8912-4ed6d32a9e0a
