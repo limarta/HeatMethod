@@ -600,61 +600,72 @@ function div_grid(grad, dx, dy)
 end
 
 # ╔═╡ 79d22285-1c69-495c-b05d-83d8c758ee46
-function l(N,M)
-    # ∇⋅ is |V|×3|F|
+function l(N,M, Δx, Δy)
+	idx(i,j) = (j-1)*M + i
 	Δx² = Δx^2
 	Δy² = Δy^2
-	Δ = sparse(N*M, N*M)
+	Δ = spzeros(N*M, N*M)
 	for j=2:(M-1)
-		for i=1:(N-1)
-			Δ[i,j] = -2/Δx² -2/Δy²
-			Δ[i,j+1] = 1/Δx²
-			Δ[i,j-1] = 1/Δx²
-			Δ[i,j-M] = 1/Δy²
-			Δ[i,j+M] = 1/Δy²
+		for i=2:(N-1)
+			ii = idx(i,j)
+			Δ[ii,ii] = -2/Δx² -2/Δy²
+			Δ[ii,idx(i-1,j)] = 1/Δx²
+			Δ[ii,idx(i+1,j)] = 1/Δx²
+			Δ[ii,idx(i,j-1)] = 1/Δy²
+			Δ[ii,idx(i,j+1)] = 1/Δy²
 		end
 	end
-	for i in 2:(N1 - 1)
-		Δ[i,1] = 0
-	end
-	for j in 2:(N2-1)
-	end
-    # for j in 2:(N2-1)
-    #     for i in 2:(N1-1)
-    #         Δu[i, j] = 
-				# (u[i+1, j] + u[i-1, j] -2u[i,j]) / Δx² + 
-				# (u[i, j+1] + u[i, j-1] -2u[i,j])/ Δy²
-    #     end
-    # end
+	for i in 2:(N - 1)
+		ii = idx(i,1)
+		jj = idx(i,M)
+		Δ[jj, jj] = Δ[ii, ii] = -2/Δx²-2/Δy²
 
-	# Dirichlet condition enforced by dropping neighbors.
-	
-    # left/right edges
-    # for i in 2:(N1 - 1)
-    #     Δu[i, 1] = (u[i+1, 1] + u[i-1, 1] -2u[i,1])/Δx² + (u[i, 2] - 2u[i, 1])/Δy²
-    #     Δu[i, N2] = (u[i+1, N2] + u[i-1, N2] -2u[i,N2])/Δx² + (u[i, N2-1] - 2u[i, N2])/Δy²
-    # end
+		Δ[ii,idx(i-1,1)] = Δ[ii,idx(i+1,1)] = Δ[jj, idx(i-1,M)] = Δ[jj, idx(i+1,M)] = 1/Δy²
+		Δ[ii,idx(i,2)] = 1/Δx²
+		Δ[jj,idx(i,M-1)] = 1/Δx²
+	end
+	for j in 2:(M-1)
+		ii = idx(1,j)
+		jj = idx(N,j)
+		Δ[jj, jj] = Δ[ii, ii] = -2/Δx²-2/Δy²
 
-    # # top/bottom edges
-    # for j in 2:(N2-1)
-    #     Δu[1, j] = (u[1, j+1] + u[1, j-1] - 2u[1,j])/Δx² + (u[2, j] - 2u[1, j])/Δy²
-    #     Δu[N1, j] = (u[N1, j+1] + u[N1, j-1] -2u[N1,j])/Δx² + (u[N1-1, j] - 2u[N1, j])/Δy²
-    # end
+		Δ[ii,idx(1,j-1)] = Δ[ii,idx(1,j+1)] = Δ[jj, idx(N,j-1)] = Δ[jj, idx(N,j+1)] = 1/Δx²
+		Δ[ii,idx(2,j)] = 1/Δy²
+		Δ[jj,idx(N-1,j)] = 1/Δy²
+	end
 
     # corners
-    Δu[1, 1] = (u[2, 1]-2u[1,1])/Δx² + (u[1, 2]-2u[1, 1])/Δy²
-    Δu[N1, 1] = (u[N1-1, 1]-2u[N1,1])/Δx² + (u[N1, 2]-2u[N1, 1])/Δy²
-    Δu[1, N2] = (u[2, N2] -2u[1,N2])/Δx²+ (u[1, N2 - 1]-2u[1,N2])/Δy²
-    Δu[N1, N2] = (u[N1 - 1, N2]-u[N1,N2])/Δx²+ (u[N1, N2-1]-u[N1, N2])/Δy²
-	Δu .*= α
-	Δu
+	ii = idx(1,1)
+	Δ[ii,ii] = -2/Δx²-2/Δy²
+	Δ[ii,idx(1,2)] = 1/Δx²
+	Δ[ii,idx(2,1)] = 1/Δy²
+
+	ii = idx(1,M)
+	Δ[ii,ii] = -2/Δx²-2/Δy²
+	Δ[ii,idx(1,M-1)] = 1/Δx²
+	Δ[ii,idx(2,M)] = 1/Δy²
+
+	ii = idx(N,1)
+	Δ[ii,ii] = -2/Δx²-2/Δy²
+	Δ[ii,idx(N,2)] = 1/Δx²
+	Δ[ii,idx(N-1,1)] = 1/Δy²
+
+	ii = idx(N,M)
+	Δ[ii,ii] = -2/Δx²-2/Δy²
+	Δ[ii,idx(N,M-1)] = 1/Δx²
+	Δ[ii,idx(N-1,M)] = 1/Δy²
+	Δ
 end
 
 # ╔═╡ a701e06d-553e-43b6-b36a-c68667bfd4b1
 begin
 	s = step(range(0,1,N))
+	L_test = l(N,N, s, s)
 	φ = div_grid(heat_grad_normalized, s,s)
-	findall(x->x>0, φ)
+	dist_grid = L_test \ vec(φ)
+
+	Plots.heatmap(1:N, 1:N, reshape(heat_grid, N,N), xlims=(1,N), ylims=(1,N),aspect_ratio=:equal, ticks=false)
+	# findall(x->x>0, φ)
 end
 
 # ╔═╡ 7c9b744e-72cd-449e-8228-a25b5c845233
@@ -3854,7 +3865,7 @@ version = "1.4.1+0"
 # ╠═b89464c0-baaa-4571-a744-91d5480c6ae1
 # ╠═160902db-e0b9-4d48-8fcb-41dbeaf429e8
 # ╟─2415e55d-bed0-4050-893e-b6a7af00ef45
-# ╠═c0c94bdd-a7d0-46c3-a61e-6c0d40d8a3c9
+# ╟─c0c94bdd-a7d0-46c3-a61e-6c0d40d8a3c9
 # ╠═346c06a8-c91f-4c56-9840-67f2f02bd8c9
 # ╠═79d22285-1c69-495c-b05d-83d8c758ee46
 # ╠═a701e06d-553e-43b6-b36a-c68667bfd4b1
